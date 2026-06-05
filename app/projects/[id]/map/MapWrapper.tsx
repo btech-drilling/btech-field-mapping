@@ -338,7 +338,7 @@ export default function MapWrapper({
         }
       `}</style>
 
-      <div ref={mapRef} className="h-[70vh] min-h-[380px] w-full rounded border lg:h-[75vh]"/>
+      <div ref={mapRef} className="h-[60vh] min-h-[380px] w-full rounded border lg:h-[75vh]"/>
     </>
   );
 }
