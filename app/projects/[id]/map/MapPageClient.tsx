@@ -305,7 +305,7 @@ const filteredPoints = useMemo(() => {
         </div>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 p-3 lg:grid-cols-[320px_1fr]">
-          <aside className="order-2 max-h-[45vh] overflow-auto rounded-lg border bg-white p-3 lg:order-1 lg:max-h-none">
+          <aside className="order-2 max-h-[55vh] overflow-auto rounded-lg border bg-white p-3 lg:order-1 lg:max-h-none">
             <div className="mb-3">
               <div className="mb-2 font-bold">Display</div>
 
@@ -372,7 +372,7 @@ const filteredPoints = useMemo(() => {
             </div>
           </aside>
 
-          <main className="order-1 h-[60vh] min-h-[420px] overflow-hidden rounded-lg border bg-white lg:order-2 lg:h-auto lg:min-h-0">
+          <main className="order-1 h-[42vh] min-h-[300px] overflow-hidden rounded-lg border bg-white lg:order-2 lg:h-auto lg:min-h-0">
             <MapWrapper
               projectId={projectId}
               points={filteredPoints}
