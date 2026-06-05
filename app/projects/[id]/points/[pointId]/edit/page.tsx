@@ -293,7 +293,10 @@ export default function EditPointPage() {
       return;
     }
 
-    router.push(`/projects/${projectId}/map`);
+  router.push(
+  `/projects/${projectId}/points/${pointId}`
+);
+
   }
 
   if (loading) {
