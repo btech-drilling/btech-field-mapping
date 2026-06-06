@@ -97,6 +97,7 @@ export default function MapWrapper({
   showPoints,
   showLines,
   showPolygons,
+  addPointMode,
 }: {
   projectId: string;
   points: any[];
@@ -105,6 +106,7 @@ export default function MapWrapper({
   showPoints: boolean;
   showLines: boolean;
   showPolygons: boolean;
+  addPointMode: boolean;
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
@@ -173,12 +175,29 @@ export default function MapWrapper({
 
         layer.bindPopup(`
           <div style="width:260px">
-            <b>${poly.name ?? "Polygon"}</b><br/>
-            Layer: ${poly.layer_name ?? "-"}<br/>
-            Type: ${sheet ? "Map Sheet" : "Geology Unit"}<br/>
-            <small>${poly.folder_path ?? ""}</small>
+            <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
+              ${poly.name ?? "Polygon"}
+            </div>
+            <div><b>Layer:</b> ${poly.layer_name ?? "-"}</div>
+            <div><b>Type:</b> ${sheet ? "Map Sheet" : "Geology Unit"}</div>
+            <div><b>Feature:</b> ${poly.feature_type ?? "-"}</div>
+            <div><b>Style ID:</b> ${poly.style_id ?? "-"}</div>
+            <div style="margin-top:6px;color:#555;font-size:12px;">
+              ${poly.folder_path ?? ""}
+            </div>
           </div>
         `);
+
+        if (addPointMode) {
+          layer.eachLayer((l: any) => {
+            if (l.getElement) {
+              const el = l.getElement();
+              if (el) {
+                el.style.pointerEvents = "none";
+              }
+            }
+          });
+        }
 
         layer.eachLayer((l: any) => {
           if (l.getLatLngs) {
@@ -207,12 +226,27 @@ export default function MapWrapper({
 
         layer.bindPopup(`
           <div style="width:260px">
-            <b>${line.name ?? "Line"}</b><br/>
-            Layer: ${line.layer_name ?? "-"}<br/>
-            Type: ${line.feature_type ?? "-"}<br/>
-            <small>${line.folder_path ?? ""}</small>
+            <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
+              ${line.name ?? "Line"}
+            </div>
+            <div><b>Layer:</b> ${line.layer_name ?? "-"}</div>
+            <div><b>Type:</b> ${line.feature_type ?? "-"}</div>
+            <div style="margin-top:6px;color:#555;font-size:12px;">
+              ${line.folder_path ?? ""}
+            </div>
           </div>
         `);
+
+        if (addPointMode) {
+          layer.eachLayer((l: any) => {
+            if (l.getElement) {
+              const el = l.getElement();
+              if (el) {
+                el.style.pointerEvents = "none";
+              }
+            }
+          });
+        }
 
         layer.eachLayer((l: any) => {
           if (l.getLatLngs) {
@@ -272,21 +306,21 @@ export default function MapWrapper({
                 : ""
             }
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
-  <a
-    href="/projects/${projectId}/points/${p.id}"
-    style="display:block;padding:8px;background:black;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
-  >
-    Open
-  </a>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+              <a
+                href="/projects/${projectId}/points/${p.id}"
+                style="display:block;padding:8px;background:black;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
+              >
+                Open
+              </a>
 
-  <a
-    href="/projects/${projectId}/points/${p.id}/edit?from=map"
-    style="display:block;padding:8px;background:#2563eb;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
-  >
-    Edit
-  </a>
-</div>
+              <a
+                href="/projects/${projectId}/points/${p.id}/edit?from=map"
+                style="display:block;padding:8px;background:#2563eb;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
+              >
+                Edit
+              </a>
+            </div>
           </div>
         `;
 
@@ -308,35 +342,37 @@ export default function MapWrapper({
       map.addLayer(clusterGroup);
     }
 
-map.on("click", (e) => {
-  const lat = e.latlng.lat;
-  const lon = e.latlng.lng;
+    if (addPointMode) {
+      map.on("click", (e) => {
+        const lat = e.latlng.lat;
+        const lon = e.latlng.lng;
 
-  const popupContent = `
-    <div style="width:240px">
-      <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
-        Add New Point
-      </div>
+        const popupContent = `
+          <div style="width:240px">
+            <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
+              Add New Point
+            </div>
 
-      <div style="font-size:12px;color:#374151;margin-bottom:8px;">
-        Lat: ${lat.toFixed(6)}<br/>
-        Lon: ${lon.toFixed(6)}
-      </div>
+            <div style="font-size:12px;color:#374151;margin-bottom:8px;">
+              Lat: ${lat.toFixed(6)}<br/>
+              Lon: ${lon.toFixed(6)}
+            </div>
 
-      <a
-        href="/projects/${projectId}/points/new?lat=${lat}&lon=${lon}&from=map"
-        style="display:block;padding:8px;background:#16a34a;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
-      >
-        Add Point Here
-      </a>
-    </div>
-  `;
+            <a
+              href="/projects/${projectId}/points/new?lat=${lat}&lon=${lon}&from=map"
+              style="display:block;padding:8px;background:#16a34a;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
+            >
+              Add Point Here
+            </a>
+          </div>
+        `;
 
-  L.popup()
-    .setLatLng(e.latlng)
-    .setContent(popupContent)
-    .openOn(map);
-});
+        L.popup()
+          .setLatLng(e.latlng)
+          .setContent(popupContent)
+          .openOn(map);
+      });
+    }
 
     if (boundsItems.length > 0) {
       map.fitBounds(L.latLngBounds(boundsItems), { padding: [40, 40] });
@@ -356,6 +392,7 @@ map.on("click", (e) => {
     showPoints,
     showLines,
     showPolygons,
+    addPointMode,
   ]);
 
   return (
@@ -377,7 +414,10 @@ map.on("click", (e) => {
         }
       `}</style>
 
-      <div ref={mapRef} className="h-[60vh] min-h-[380px] w-full rounded border lg:h-[75vh]"/>
+      <div
+        ref={mapRef}
+        className="h-[60vh] min-h-[380px] w-full rounded border lg:h-[75vh]"
+      />
     </>
   );
 }

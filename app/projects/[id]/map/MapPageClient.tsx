@@ -90,11 +90,11 @@ export default function MapPageClient({
   totalLines: number;
   totalPolygons: number;
 }) {
-
   const [search, setSearch] = useState("");
   const [showPoints, setShowPoints] = useState(true);
   const [showLines, setShowLines] = useState(true);
   const [showPolygons, setShowPolygons] = useState(true);
+  const [addPointMode, setAddPointMode] = useState(false);
 
   const [visibleLayers, setVisibleLayers] = useState<string[]>([]);
   const [loadedLayers, setLoadedLayers] = useState<Record<string, boolean>>({});
@@ -168,9 +168,7 @@ export default function MapPageClient({
 
     await Promise.all(group.map((layer) => loadLayer(layer)));
 
-    setVisibleLayers((prev) =>
-      Array.from(new Set([...prev, ...group]))
-    );
+    setVisibleLayers((prev) => Array.from(new Set([...prev, ...group])));
   }
 
   async function selectAllLayers() {
@@ -184,23 +182,24 @@ export default function MapPageClient({
 
   function resetDefaultLayers() {
     setVisibleLayers([]);
+    setAddPointMode(false);
   }
 
-const filteredPoints = useMemo(() => {
-  const q = search.trim().toLowerCase();
+  const filteredPoints = useMemo(() => {
+    const q = search.trim().toLowerCase();
 
-  return points.filter((p) => {
-    const matchSearch = !q
-      ? true
-      : String(p.point_code ?? "").toLowerCase().includes(q);
+    return points.filter((p) => {
+      const matchSearch = !q
+        ? true
+        : String(p.point_code ?? "").toLowerCase().includes(q);
 
-    const matchLayer = p.layer_name
-      ? visibleLayers.includes(p.layer_name)
-      : false;
+      const matchLayer = p.layer_name
+        ? visibleLayers.includes(p.layer_name)
+        : false;
 
-    return matchSearch && matchLayer;
-  });
-}, [points, search, visibleLayers]);
+      return matchSearch && matchLayer;
+    });
+  }, [points, search, visibleLayers]);
 
   const filteredLines = useMemo(() => {
     return lines.filter((l) =>
@@ -270,10 +269,17 @@ const filteredPoints = useMemo(() => {
               <h1 className="mt-1 text-xl font-bold">Field Mapping Map</h1>
 
               <p className="text-sm text-gray-500">
-                    Points: {showPoints ? filteredPoints.length : 0}/{points.length} |
-                    Lines: {showLines ? filteredLines.length : 0}/{totalLines} | Polygons:{" "}
-                    {showPolygons ? filteredPolygons.length : 0}/{totalPolygons}
+                Points: {showPoints ? filteredPoints.length : 0}/{points.length} |
+                Lines: {showLines ? filteredLines.length : 0}/{totalLines} |
+                Polygons: {showPolygons ? filteredPolygons.length : 0}/
+                {totalPolygons}
               </p>
+
+              {addPointMode && (
+                <p className="mt-1 text-sm font-semibold text-emerald-700">
+                  Add Point Mode is ON — click anywhere on the map to add a point.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -293,6 +299,18 @@ const filteredPoints = useMemo(() => {
                   Clear
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => setAddPointMode((prev) => !prev)}
+                className={`rounded px-4 py-2 text-sm font-semibold ${
+                  addPointMode
+                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                    : "border bg-white hover:bg-gray-50"
+                }`}
+              >
+                {addPointMode ? "Add Point Mode: ON" : "Add Point Mode: OFF"}
+              </button>
 
               <Link
                 href={`/projects/${projectId}/points`}
@@ -381,6 +399,7 @@ const filteredPoints = useMemo(() => {
               showPoints={showPoints}
               showLines={showLines}
               showPolygons={showPolygons}
+              addPointMode={addPointMode}
             />
           </main>
         </div>
