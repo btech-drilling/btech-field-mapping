@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import MapPageClient from "./MapPageClient";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function ProjectMapPage({
   params,
@@ -54,13 +55,35 @@ export default async function ProjectMapPage({
     return <div className="p-6">Error: {lineLayerError.message}</div>;
   }
 
-  const layerNames = Array.from(
-    new Set(
-      [...(polygonLayers ?? []), ...(lineLayers ?? [])]
-        .map((x) => x.layer_name)
-        .filter(Boolean)
-    )
-  );
+const pointLayers = (points ?? [])
+  .map((x) => x.layer_name)
+  .filter(Boolean);
+
+const polygonLayerNames = (polygonLayers ?? [])
+  .map((x) => x.layer_name)
+  .filter(Boolean);
+
+const lineLayerNames = (lineLayers ?? [])
+  .map((x) => x.layer_name)
+  .filter(Boolean);
+
+const layerNames = Array.from(
+  new Set([...polygonLayerNames, ...lineLayerNames, ...pointLayers])
+).sort((a, b) => {
+  const getTvNumber = (value: string) => {
+    const match = value.match(/^TV(\d+)$/i);
+    return match ? Number(match[1]) : null;
+  };
+
+  const aTv = getTvNumber(a);
+  const bTv = getTvNumber(b);
+
+  if (aTv !== null && bTv !== null) return aTv - bTv;
+  if (aTv !== null) return -1;
+  if (bTv !== null) return 1;
+
+  return a.localeCompare(b);
+});
 
 const { count: totalLines } = await supabase
   .from("mapping_lines")

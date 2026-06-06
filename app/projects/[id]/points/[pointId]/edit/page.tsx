@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { latLonToUTM, utmToLatLon } from "@/lib/utm";
+import DeletePointButton from "../DeletePointButton";
 
 export default function EditPointPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from");
 
   const projectId = String(params.id);
   const pointId = String(params.pointId);
@@ -20,6 +24,12 @@ export default function EditPointPage() {
   const [pointCode, setPointCode] = useState("");
   const [status, setStatus] = useState("PLANNED");
   const [targetObjective, setTargetObjective] = useState("");
+
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [utmZone, setUtmZone] = useState("");
+  const [utmEasting, setUtmEasting] = useState("");
+  const [utmNorthing, setUtmNorthing] = useState("");
 
   const [rockType, setRockType] = useState("");
   const [rockTypeOther, setRockTypeOther] = useState("");
@@ -42,6 +52,12 @@ export default function EditPointPage() {
   const [outcropPhotoUrl, setOutcropPhotoUrl] = useState("");
   const [remark, setRemark] = useState("");
   const [message, setMessage] = useState("");
+
+  const inputClass =
+    "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-950 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100";
+
+  const cardClass =
+    "rounded-3xl border border-slate-200 bg-white p-6 text-slate-950 shadow-xl";
 
   const rockTypeOptions = [
     "Granite",
@@ -128,6 +144,35 @@ export default function EditPointPage() {
       setStatus(data.status ?? "PLANNED");
       setTargetObjective(data.objective ?? "");
 
+      const latValue =
+        data.latitude === null || data.latitude === undefined
+          ? ""
+          : String(data.latitude);
+
+      const lonValue =
+        data.longitude === null || data.longitude === undefined
+          ? ""
+          : String(data.longitude);
+
+      setLatitude(latValue);
+      setLongitude(lonValue);
+
+      const latNumber = Number(data.latitude);
+      const lonNumber = Number(data.longitude);
+
+      if (Number.isFinite(latNumber) && Number.isFinite(lonNumber)) {
+        try {
+          const utm = latLonToUTM(latNumber, lonNumber);
+          setUtmZone(utm.zone);
+          setUtmEasting(Math.round(utm.easting).toString());
+          setUtmNorthing(Math.round(utm.northing).toString());
+        } catch {
+          setUtmZone("");
+          setUtmEasting("");
+          setUtmNorthing("");
+        }
+      }
+
       setRockType(
         data.rock_type
           ? rockTypeOptions.includes(data.rock_type)
@@ -135,6 +180,7 @@ export default function EditPointPage() {
             : "Other"
           : ""
       );
+
       setRockTypeOther(
         data.rock_type && !rockTypeOptions.includes(data.rock_type)
           ? data.rock_type
@@ -150,6 +196,7 @@ export default function EditPointPage() {
             : "Other"
           : ""
       );
+
       setAlterationOther(
         data.alteration && !alterationOptions.includes(data.alteration)
           ? data.alteration
@@ -163,6 +210,7 @@ export default function EditPointPage() {
             : "Other"
           : ""
       );
+
       setMineralizationOther(
         data.mineralization &&
           !mineralizationOptions.includes(data.mineralization)
@@ -177,6 +225,7 @@ export default function EditPointPage() {
             : "Other"
           : ""
       );
+
       setStructureTypeOther(
         data.structure_type && !structureOptions.includes(data.structure_type)
           ? data.structure_type
@@ -249,6 +298,55 @@ export default function EditPointPage() {
       return;
     }
 
+    const eastingValue = Number(utmEasting);
+    const northingValue = Number(utmNorthing);
+    const zoneValue = utmZone.trim().toUpperCase();
+
+    let finalLatitude = latitude.trim() === "" ? null : Number(latitude);
+    let finalLongitude = longitude.trim() === "" ? null : Number(longitude);
+
+    if (zoneValue || utmEasting.trim() || utmNorthing.trim()) {
+      if (
+        !zoneValue ||
+        Number.isNaN(eastingValue) ||
+        Number.isNaN(northingValue)
+      ) {
+        setMessage("UTM Zone / Easting / Northing must be valid.");
+        setSaving(false);
+        return;
+      }
+
+      try {
+        const converted = utmToLatLon(eastingValue, northingValue, zoneValue);
+        finalLatitude = converted.latitude;
+        finalLongitude = converted.longitude;
+      } catch (error: any) {
+        setMessage("UTM error: " + error.message);
+        setSaving(false);
+        return;
+      }
+    }
+
+    if (
+      finalLatitude !== null &&
+      (Number.isNaN(finalLatitude) || finalLatitude < -90 || finalLatitude > 90)
+    ) {
+      setMessage("Latitude must be between -90 and 90.");
+      setSaving(false);
+      return;
+    }
+
+    if (
+      finalLongitude !== null &&
+      (Number.isNaN(finalLongitude) ||
+        finalLongitude < -180 ||
+        finalLongitude > 180)
+    ) {
+      setMessage("Longitude must be between -180 and 180.");
+      setSaving(false);
+      return;
+    }
+
     const finalRockType =
       rockType === "Other" ? rockTypeOther.trim() : rockType;
 
@@ -269,6 +367,8 @@ export default function EditPointPage() {
       .from("mapping_points")
       .update({
         status,
+        latitude: finalLatitude,
+        longitude: finalLongitude,
         objective: targetObjective || null,
         rock_type: finalRockType || null,
         weathering: weathering || null,
@@ -293,162 +393,395 @@ export default function EditPointPage() {
       return;
     }
 
-  router.push(
-  `/projects/${projectId}/points/${pointId}`
-);
-
+    if (from === "map") {
+      window.location.href = `/projects/${projectId}/map?refresh=${Date.now()}`;
+    } else {
+      router.push(`/projects/${projectId}/points/${pointId}`);
+    }
   }
 
   if (loading) {
-    return <div className="p-6">Loading...</div>;
+    return (
+      <main className="min-h-screen bg-slate-950 p-6 text-white">
+        Loading...
+      </main>
+    );
   }
 
   return (
-<div className="p-6 max-w-3xl">
-  <div className="mb-4 flex flex-wrap gap-2">
-    <Link
-      href={`/projects/${projectId}/map`}
-      className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
-    >
-      ← Back to Map
-    </Link>
+    <main className="min-h-screen bg-slate-950 text-white">
+      <div className="mx-auto max-w-5xl p-6">
+        <div className="mb-6 flex flex-wrap gap-3 text-sm">
+          <Link
+            href={`/projects/${projectId}/map`}
+            className="rounded-xl border border-white/20 px-4 py-2 font-semibold text-slate-200 hover:bg-white/10"
+          >
+            ← Back to Map
+          </Link>
 
-    <Link
-      href={`/projects/${projectId}`}
-      className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
-    >
-      Back to Project
-    </Link>
+          <Link
+            href={`/projects/${projectId}`}
+            className="rounded-xl border border-white/20 px-4 py-2 font-semibold text-slate-200 hover:bg-white/10"
+          >
+            Back to Project
+          </Link>
 
-    <Link
-      href={`/projects/${projectId}/points/${pointId}`}
-      className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
-    >
-      Back to Point
-    </Link>
-  </div>
-
-      <h1 className="mt-4 text-2xl font-bold">Edit Field Record</h1>
-      <p className="text-gray-500 mb-6">{pointCode}</p>
-
-      <form onSubmit={savePoint} className="grid gap-4">
-        <select value={status} onChange={(e) => setStatus(e.target.value)} className="border rounded p-3">
-          <option value="PLANNED">PLANNED</option>
-          <option value="VISITED">VISITED</option>
-          <option value="SAMPLED">SAMPLED</option>
-          <option value="NEED_REVISIT">NEED_REVISIT</option>
-          <option value="COMPLETED">COMPLETED</option>
-        </select>
-
-        <select value={targetObjective} onChange={(e) => setTargetObjective(e.target.value)} className="border rounded p-3">
-          <option value="">Target Objective</option>
-          <option value="Normal">Normal</option>
-          <option value="Fault">Fault</option>
-          <option value="Boundary + Contact">Boundary + Contact</option>
-          <option value="Fault + Boundary">Fault + Boundary</option>
-          <option value="Mineralization">Mineralization</option>
-          <option value="Alteration">Alteration</option>
-          <option value="Lithology">Lithology</option>
-          <option value="Follow-up">Follow-up</option>
-          <option value="Verification">Verification</option>
-        </select>
-
-        <select value={rockType} onChange={(e) => setRockType(e.target.value)} className="border rounded p-3">
-          <option value="">Rock Type</option>
-          {rockTypeOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-          <option value="Other">Other</option>
-        </select>
-
-        {rockType === "Other" && (
-          <input value={rockTypeOther} onChange={(e) => setRockTypeOther(e.target.value)} placeholder="Specify Rock Type" className="border rounded p-3" />
-        )}
-
-        <select value={weathering} onChange={(e) => setWeathering(e.target.value)} className="border rounded p-3">
-          <option value="">Weathering</option>
-          <option value="Fresh">Fresh</option>
-          <option value="Slightly Weathered">Slightly Weathered</option>
-          <option value="Moderately Weathered">Moderately Weathered</option>
-          <option value="Highly Weathered">Highly Weathered</option>
-          <option value="Completely Weathered">Completely Weathered</option>
-        </select>
-
-        <select value={alteration} onChange={(e) => setAlteration(e.target.value)} className="border rounded p-3">
-          <option value="">Alteration</option>
-          {alterationOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-          <option value="Other">Other</option>
-        </select>
-
-        {alteration === "Other" && (
-          <input value={alterationOther} onChange={(e) => setAlterationOther(e.target.value)} placeholder="Specify Alteration" className="border rounded p-3" />
-        )}
-
-        <select value={mineralization} onChange={(e) => setMineralization(e.target.value)} className="border rounded p-3">
-          <option value="">Mineralization</option>
-          {mineralizationOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-          <option value="Other">Other</option>
-        </select>
-
-        {mineralization === "Other" && (
-          <input value={mineralizationOther} onChange={(e) => setMineralizationOther(e.target.value)} placeholder="Specify Mineralization" className="border rounded p-3" />
-        )}
-
-        <select value={structureType} onChange={(e) => setStructureType(e.target.value)} className="border rounded p-3">
-          <option value="">Structure</option>
-          {structureOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-          <option value="Other">Other</option>
-        </select>
-
-        {structureType === "Other" && (
-          <input value={structureTypeOther} onChange={(e) => setStructureTypeOther(e.target.value)} placeholder="Specify Structure" className="border rounded p-3" />
-        )}
-
-        <div className="grid grid-cols-2 gap-4">
-          <input value={strike} onChange={(e) => setStrike(e.target.value)} placeholder="Strike" className="border rounded p-3" />
-          <input value={dip} onChange={(e) => setDip(e.target.value)} placeholder="Dip" className="border rounded p-3" />
+          <Link
+            href={`/projects/${projectId}/points/${pointId}`}
+            className="rounded-xl border border-white/20 px-4 py-2 font-semibold text-slate-200 hover:bg-white/10"
+          >
+            Back to Point
+          </Link>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <input value={sampleId} onChange={(e) => setSampleId(e.target.value)} placeholder="Sample ID" className="border rounded p-3" />
+        <section className="mb-6 rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 p-8 shadow-2xl">
+          <div className="mb-3 inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-sm text-emerald-300">
+            Edit Field Observation
+          </div>
 
-          <select value={sampleType} onChange={(e) => setSampleType(e.target.value)} className="border rounded p-3">
-            <option value="">Sample Type</option>
-            <option value="Grab">Grab</option>
-            <option value="Rock Chip">Rock Chip</option>
-            <option value="Channel">Channel</option>
-            <option value="Float">Float</option>
-            <option value="Soil">Soil</option>
-            <option value="Stream Sediment">Stream Sediment</option>
-          </select>
-        </div>
+          <h1 className="text-5xl font-black tracking-tight">{pointCode}</h1>
 
-        <div className="border rounded p-4">
-          <div className="font-semibold mb-2">Sample Photo</div>
-          {samplePhotoUrl && <img src={samplePhotoUrl} alt="Sample" className="mb-3 max-h-64 rounded border object-cover" />}
-          <input type="file" accept="image/*" onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) uploadPhoto(file, "sample");
-          }} />
-          {uploadingSample && <div className="mt-2 text-sm text-gray-500">Uploading sample photo...</div>}
-        </div>
+          <p className="mt-3 text-slate-300">
+            Update field record, coordinate, UTM, photos and geological
+            information
+          </p>
+        </section>
 
-        <div className="border rounded p-4">
-          <div className="font-semibold mb-2">Outcrop Photo</div>
-          {outcropPhotoUrl && <img src={outcropPhotoUrl} alt="Outcrop" className="mb-3 max-h-64 rounded border object-cover" />}
-          <input type="file" accept="image/*" onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) uploadPhoto(file, "outcrop");
-          }} />
-          {uploadingOutcrop && <div className="mt-2 text-sm text-gray-500">Uploading outcrop photo...</div>}
-        </div>
+        <form
+          onSubmit={savePoint}
+          className="grid gap-6 rounded-3xl border border-white/10 bg-white p-6 text-slate-950 shadow-xl"
+        >
+          <section className={cardClass}>
+            <h2 className="mb-4 text-2xl font-bold">Location / UTM</h2>
 
-        <textarea value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="Remark" rows={4} className="border rounded p-3" />
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <input
+                value={latitude}
+                onChange={(e) => setLatitude(e.target.value)}
+                placeholder="Latitude"
+                className={inputClass}
+              />
 
-        <button type="submit" disabled={saving || uploadingSample || uploadingOutcrop} className="rounded bg-black px-4 py-3 text-white disabled:opacity-50">
-          {saving ? "Saving..." : "Save Field Record"}
-        </button>
+              <input
+                value={longitude}
+                onChange={(e) => setLongitude(e.target.value)}
+                placeholder="Longitude"
+                className={inputClass}
+              />
+            </div>
 
-        {message && <div className="border rounded p-3">{message}</div>}
-      </form>
-    </div>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <input
+                value={utmZone}
+                onChange={(e) => setUtmZone(e.target.value.toUpperCase())}
+                placeholder="UTM Zone เช่น 47P"
+                className={inputClass}
+              />
+
+              <input
+                value={utmEasting}
+                onChange={(e) => setUtmEasting(e.target.value)}
+                placeholder="Easting"
+                className={inputClass}
+              />
+
+              <input
+                value={utmNorthing}
+                onChange={(e) => setUtmNorthing(e.target.value)}
+                placeholder="Northing"
+                className={inputClass}
+              />
+            </div>
+
+            <div className="mt-3 text-sm text-slate-500">
+              ถ้าแก้ค่า UTM ระบบจะใช้ UTM แปลงกลับเป็น Latitude / Longitude ตอนกด Save
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <h2 className="mb-4 text-2xl font-bold">Field Information</h2>
+
+            <div className="grid gap-4">
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className={inputClass}
+              >
+                <option value="PLANNED">PLANNED</option>
+                <option value="VISITED">VISITED</option>
+                <option value="SAMPLED">SAMPLED</option>
+                <option value="NEED_REVISIT">NEED_REVISIT</option>
+                <option value="COMPLETED">COMPLETED</option>
+              </select>
+
+              <select
+                value={targetObjective}
+                onChange={(e) => setTargetObjective(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Target Objective</option>
+                <option value="Normal">Normal</option>
+                <option value="Fault">Fault</option>
+                <option value="Boundary + Contact">Boundary + Contact</option>
+                <option value="Fault + Boundary">Fault + Boundary</option>
+                <option value="Mineralization">Mineralization</option>
+                <option value="Alteration">Alteration</option>
+                <option value="Lithology">Lithology</option>
+                <option value="Follow-up">Follow-up</option>
+                <option value="Verification">Verification</option>
+              </select>
+
+              <select
+                value={rockType}
+                onChange={(e) => setRockType(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Rock Type</option>
+                {rockTypeOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+                <option value="Other">Other</option>
+              </select>
+
+              {rockType === "Other" && (
+                <input
+                  value={rockTypeOther}
+                  onChange={(e) => setRockTypeOther(e.target.value)}
+                  placeholder="Specify Rock Type"
+                  className={inputClass}
+                />
+              )}
+
+              <select
+                value={weathering}
+                onChange={(e) => setWeathering(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Weathering</option>
+                <option value="Fresh">Fresh</option>
+                <option value="Slightly Weathered">Slightly Weathered</option>
+                <option value="Moderately Weathered">Moderately Weathered</option>
+                <option value="Highly Weathered">Highly Weathered</option>
+                <option value="Completely Weathered">Completely Weathered</option>
+              </select>
+
+              <select
+                value={alteration}
+                onChange={(e) => setAlteration(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Alteration</option>
+                {alterationOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+                <option value="Other">Other</option>
+              </select>
+
+              {alteration === "Other" && (
+                <input
+                  value={alterationOther}
+                  onChange={(e) => setAlterationOther(e.target.value)}
+                  placeholder="Specify Alteration"
+                  className={inputClass}
+                />
+              )}
+
+              <select
+                value={mineralization}
+                onChange={(e) => setMineralization(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Mineralization</option>
+                {mineralizationOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+                <option value="Other">Other</option>
+              </select>
+
+              {mineralization === "Other" && (
+                <input
+                  value={mineralizationOther}
+                  onChange={(e) => setMineralizationOther(e.target.value)}
+                  placeholder="Specify Mineralization"
+                  className={inputClass}
+                />
+              )}
+
+              <select
+                value={structureType}
+                onChange={(e) => setStructureType(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Structure</option>
+                {structureOptions.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))}
+                <option value="Other">Other</option>
+              </select>
+
+              {structureType === "Other" && (
+                <input
+                  value={structureTypeOther}
+                  onChange={(e) => setStructureTypeOther(e.target.value)}
+                  placeholder="Specify Structure"
+                  className={inputClass}
+                />
+              )}
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <h2 className="mb-4 text-2xl font-bold">Structure / Sample</h2>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <input
+                value={strike}
+                onChange={(e) => setStrike(e.target.value)}
+                placeholder="Strike"
+                className={inputClass}
+              />
+
+              <input
+                value={dip}
+                onChange={(e) => setDip(e.target.value)}
+                placeholder="Dip"
+                className={inputClass}
+              />
+
+              <input
+                value={sampleId}
+                onChange={(e) => setSampleId(e.target.value)}
+                placeholder="Sample ID"
+                className={inputClass}
+              />
+
+              <select
+                value={sampleType}
+                onChange={(e) => setSampleType(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">Sample Type</option>
+                <option value="Grab">Grab</option>
+                <option value="Rock Chip">Rock Chip</option>
+                <option value="Channel">Channel</option>
+                <option value="Float">Float</option>
+                <option value="Soil">Soil</option>
+                <option value="Stream Sediment">Stream Sediment</option>
+              </select>
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <h2 className="mb-4 text-2xl font-bold">Photos</h2>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 font-bold">Sample Photo</div>
+
+                {samplePhotoUrl && (
+                  <img
+                    src={samplePhotoUrl}
+                    alt="Sample"
+                    className="mb-3 max-h-64 w-full rounded-xl border bg-white object-contain"
+                  />
+                )}
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadPhoto(file, "sample");
+                  }}
+                />
+
+                {uploadingSample && (
+                  <div className="mt-2 text-sm text-slate-500">
+                    Uploading sample photo...
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 font-bold">Outcrop Photo</div>
+
+                {outcropPhotoUrl && (
+                  <img
+                    src={outcropPhotoUrl}
+                    alt="Outcrop"
+                    className="mb-3 max-h-64 w-full rounded-xl border bg-white object-contain"
+                  />
+                )}
+
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadPhoto(file, "outcrop");
+                  }}
+                />
+
+                {uploadingOutcrop && (
+                  <div className="mt-2 text-sm text-slate-500">
+                    Uploading outcrop photo...
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <h2 className="mb-4 text-2xl font-bold">Remark</h2>
+
+            <textarea
+              value={remark}
+              onChange={(e) => setRemark(e.target.value)}
+              placeholder="Remark"
+              rows={4}
+              className={inputClass}
+            />
+          </section>
+
+          <button
+            type="submit"
+            disabled={saving || uploadingSample || uploadingOutcrop}
+            className="rounded-2xl bg-slate-950 px-5 py-4 font-bold text-white shadow-lg hover:bg-slate-800 disabled:opacity-50"
+          >
+            {saving ? "Saving..." : "Save Field Record"}
+          </button>
+
+          <section className="rounded-3xl border border-red-200 bg-red-50 p-6 text-slate-950 shadow-xl">
+            <div className="mb-2 text-xl font-bold text-red-700">
+              Danger Zone
+            </div>
+
+            <div className="mb-4 text-sm text-red-600">
+              ลบ Point นี้ออกจากระบบ หากลบแล้วจะไม่แสดงบน Map และ Points List
+            </div>
+
+            <DeletePointButton
+              projectId={projectId}
+              pointId={pointId}
+              from={from === "map" ? "map" : "point"}
+            />
+          </section>
+
+          {message && (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-slate-700">
+              {message}
+            </div>
+          )}
+        </form>
+      </div>
+    </main>
   );
 }

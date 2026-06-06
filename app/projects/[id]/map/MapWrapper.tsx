@@ -272,12 +272,21 @@ export default function MapWrapper({
                 : ""
             }
 
-            <a
-              href="/projects/${projectId}/points/${p.id}"
-              style="display:block;margin-top:10px;padding:8px;background:black;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
-            >
-              Open Record
-            </a>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+  <a
+    href="/projects/${projectId}/points/${p.id}"
+    style="display:block;padding:8px;background:black;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
+  >
+    Open
+  </a>
+
+  <a
+    href="/projects/${projectId}/points/${p.id}/edit?from=map"
+    style="display:block;padding:8px;background:#2563eb;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
+  >
+    Edit
+  </a>
+</div>
           </div>
         `;
 
@@ -298,6 +307,36 @@ export default function MapWrapper({
 
       map.addLayer(clusterGroup);
     }
+
+map.on("click", (e) => {
+  const lat = e.latlng.lat;
+  const lon = e.latlng.lng;
+
+  const popupContent = `
+    <div style="width:240px">
+      <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
+        Add New Point
+      </div>
+
+      <div style="font-size:12px;color:#374151;margin-bottom:8px;">
+        Lat: ${lat.toFixed(6)}<br/>
+        Lon: ${lon.toFixed(6)}
+      </div>
+
+      <a
+        href="/projects/${projectId}/points/new?lat=${lat}&lon=${lon}&from=map"
+        style="display:block;padding:8px;background:#16a34a;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
+      >
+        Add Point Here
+      </a>
+    </div>
+  `;
+
+  L.popup()
+    .setLatLng(e.latlng)
+    .setContent(popupContent)
+    .openOn(map);
+});
 
     if (boundsItems.length > 0) {
       map.fitBounds(L.latLngBounds(boundsItems), { padding: [40, 40] });

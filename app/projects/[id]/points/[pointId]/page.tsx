@@ -1,6 +1,7 @@
 import { latLonToUTM } from "@/lib/utm";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import DeletePointButton from "./DeletePointButton";
 
 export const dynamic = "force-dynamic";
 
@@ -146,6 +147,12 @@ const utm =
               >
                 Google Maps
               </Link>
+
+              <DeletePointButton
+                projectId={id}
+                pointId={point.id}
+                from="point"
+              />
             </div>
           </div>
         </section>
