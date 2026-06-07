@@ -108,12 +108,33 @@ function getDescriptionHtmlValue(pm: Element, fieldName: string) {
   const target = fieldName.trim().toLowerCase();
 
   const descriptionEl = pm.getElementsByTagName("description")[0];
+  if (!descriptionEl) return null;
 
-  const rawDescription = descriptionEl?.textContent
-    ? cleanText(descriptionEl.textContent)
-    : "";
+  const serializer = new XMLSerializer();
 
-  if (!rawDescription) return null;
+  let rawDescription = "";
+
+  // กรณี description มี HTML/XML child จริง ๆ เช่น <table><tr><td>desc_t1</td>...
+  if (descriptionEl.children.length > 0) {
+    rawDescription = Array.from(descriptionEl.childNodes)
+      .map((node) => serializer.serializeToString(node))
+      .join("");
+  } else {
+    // กรณี description เป็น CDATA หรือ escaped HTML
+    rawDescription = descriptionEl.textContent ?? "";
+  }
+
+  if (!rawDescription.trim()) return null;
+
+  rawDescription = rawDescription
+    .replace(/<!\[CDATA\[/g, "")
+    .replace(/\]\]>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
 
   const parser = new DOMParser();
   const htmlDoc = parser.parseFromString(rawDescription, "text/html");
@@ -126,8 +147,31 @@ function getDescriptionHtmlValue(pm: Element, fieldName: string) {
     );
 
     if (cells.length >= 2 && cells[0].trim().toLowerCase() === target) {
-      return cells[1] || null;
+      return cells
+        .slice(1)
+        .join(" ")
+        .replace(/\s+/g, " ")
+        .trim();
     }
+  }
+
+  // fallback regex เผื่อ DOMParser ไม่เจอ table
+  const escapedTarget = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const regex = new RegExp(
+    `<td[^>]*>\\s*${escapedTarget}\\s*<\\/td>\\s*<td[^>]*>([\\s\\S]*?)<\\/td>`,
+    "i"
+  );
+
+  const match = rawDescription.match(regex);
+
+  if (match?.[1]) {
+    return cleanText(
+      match[1]
+        .replace(/<br\\s*\\/?>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+    );
   }
 
   return null;
