@@ -61,9 +61,9 @@ async function fetchLayerData(projectId: string, layerName: string) {
 
     supabase
       .from("mapping_polygons")
-      .select(
-        "id,name,feature_type,geojson,stroke_color,fill_color,fill_opacity,style_id,layer_name,folder_path"
-      )
+.select(
+  "id,name,feature_type,geojson,stroke_color,fill_color,fill_opacity,style_id,layer_name,folder_path,desc_t1"
+)
       .eq("project_id", projectId)
       .eq("layer_name", layerName),
   ]);

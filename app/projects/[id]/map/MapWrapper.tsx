@@ -179,20 +179,33 @@ export default function MapWrapper({
           },
         }).addTo(map);
 
-        layer.bindPopup(`
-          <div style="width:260px">
-            <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
-              ${poly.name ?? "Polygon"}
-            </div>
-            <div><b>Layer:</b> ${poly.layer_name ?? "-"}</div>
-            <div><b>Type:</b> ${sheet ? "Map Sheet" : "Geology Unit"}</div>
-            <div><b>Feature:</b> ${poly.feature_type ?? "-"}</div>
-            <div><b>Style ID:</b> ${poly.style_id ?? "-"}</div>
-            <div style="margin-top:6px;color:#555;font-size:12px;">
-              ${poly.folder_path ?? ""}
-            </div>
+layer.bindPopup(`
+  <div style="width:300px">
+    <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
+      ${poly.name ?? "Polygon"}
+    </div>
+
+    <div><b>Layer:</b> ${poly.layer_name ?? "-"}</div>
+    <div><b>Type:</b> ${sheet ? "Map Sheet" : "Geology Unit"}</div>
+    <div><b>Feature:</b> ${poly.feature_type ?? "-"}</div>
+    <div><b>Style ID:</b> ${poly.style_id ?? "-"}</div>
+
+    ${
+      poly.desc_t1
+        ? `
+          <div style="margin-top:10px;padding:8px;border-radius:6px;background:#f3f4f6;color:#111827;font-size:12px;line-height:1.45;">
+            <div style="font-weight:bold;margin-bottom:4px;">Description</div>
+            ${poly.desc_t1}
           </div>
-        `);
+        `
+        : ""
+    }
+
+    <div style="margin-top:6px;color:#555;font-size:12px;">
+      ${poly.folder_path ?? ""}
+    </div>
+  </div>
+`);
 
         layer.eachLayer((l: any) => {
           if (l.getLatLngs) {

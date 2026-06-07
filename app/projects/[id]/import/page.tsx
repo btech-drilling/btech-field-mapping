@@ -54,6 +54,7 @@ type MappingPolygon = {
   style_id: string | null;
   layer_name: string | null;
   folder_path: string | null;
+  desc_t1: string | null;
   remark: string | null;
 };
 
@@ -76,6 +77,60 @@ function getDirectChildText(el: Element, tagName: string) {
 function getStyleUrlFromPlacemark(pm: Element) {
   const raw = getDirectChildText(pm, "styleUrl");
   return raw.replace("#", "").trim() || null;
+}
+function getExtendedDataValue(pm: Element, fieldName: string) {
+  const target = fieldName.trim().toLowerCase();
+
+  const simpleDataEls = Array.from(pm.getElementsByTagName("SimpleData"));
+
+  for (const el of simpleDataEls) {
+    const name = el.getAttribute("name")?.trim().toLowerCase();
+    if (name === target) {
+      return el.textContent ? cleanText(el.textContent) : null;
+    }
+  }
+
+  const dataEls = Array.from(pm.getElementsByTagName("Data"));
+
+  for (const el of dataEls) {
+    const name = el.getAttribute("name")?.trim().toLowerCase();
+
+    if (name === target) {
+      const valueEl = el.getElementsByTagName("value")[0];
+      return valueEl?.textContent ? cleanText(valueEl.textContent) : null;
+    }
+  }
+
+  return null;
+}
+
+function getDescriptionHtmlValue(pm: Element, fieldName: string) {
+  const target = fieldName.trim().toLowerCase();
+
+  const descriptionEl = pm.getElementsByTagName("description")[0];
+
+  const rawDescription = descriptionEl?.textContent
+    ? cleanText(descriptionEl.textContent)
+    : "";
+
+  if (!rawDescription) return null;
+
+  const parser = new DOMParser();
+  const htmlDoc = parser.parseFromString(rawDescription, "text/html");
+
+  const rows = Array.from(htmlDoc.querySelectorAll("tr"));
+
+  for (const row of rows) {
+    const cells = Array.from(row.querySelectorAll("td, th")).map((cell) =>
+      cleanText(cell.textContent ?? "")
+    );
+
+    if (cells.length >= 2 && cells[0].trim().toLowerCase() === target) {
+      return cells[1] || null;
+    }
+  }
+
+  return null;
 }
 
 // KML color = aabbggrr
@@ -205,9 +260,12 @@ function traverseFolders(
 
     if (child.tagName !== "Placemark") continue;
 
-    const name = getDirectChildText(child, "name") || "Unnamed Feature";
-    const styleId = getStyleUrlFromPlacemark(child);
-    const style = styleId ? styles[styleId] : null;
+const name = getDirectChildText(child, "name") || "Unnamed Feature";
+const styleId = getStyleUrlFromPlacemark(child);
+const style = styleId ? styles[styleId] : null;
+const descT1 =
+  getExtendedDataValue(child, "desc_t1") ||
+  getDescriptionHtmlValue(child, "desc_t1");
 
     const layerName =
       folderPath.length > 0 ? folderPath[folderPath.length - 1] : null;
@@ -294,29 +352,30 @@ function traverseFolders(
         .filter(Boolean) as number[][][][];
 
       if (multiPolygonCoordinates.length > 0) {
-        polygons.push({
-          project_id: projectId,
-          name,
-          feature_type: layerType,
-          geojson:
-            multiPolygonCoordinates.length === 1
-              ? {
-                  type: "Polygon",
-                  coordinates: multiPolygonCoordinates[0],
-                }
-              : {
-                  type: "MultiPolygon",
-                  coordinates: multiPolygonCoordinates,
-                },
-          stroke_color: style?.lineColor || style?.polyColor || "#ffff00",
-          fill_color: style?.polyColor || "#cccccc",
-          fill_opacity:
-            layerType === "MAP_SHEET" ? 0 : style?.fillOpacity ?? 0.25,
-          style_id: styleId,
-          layer_name: layerName,
-          folder_path: folderPathText,
-          remark: null,
-        });
+polygons.push({
+  project_id: projectId,
+  name,
+  feature_type: layerType,
+  geojson:
+    multiPolygonCoordinates.length === 1
+      ? {
+          type: "Polygon",
+          coordinates: multiPolygonCoordinates[0],
+        }
+      : {
+          type: "MultiPolygon",
+          coordinates: multiPolygonCoordinates,
+        },
+  stroke_color: style?.lineColor || style?.polyColor || "#ffff00",
+  fill_color: style?.polyColor || "#cccccc",
+  fill_opacity:
+    layerType === "MAP_SHEET" ? 0 : style?.fillOpacity ?? 0.25,
+  style_id: styleId,
+  layer_name: layerName,
+  folder_path: folderPathText,
+  desc_t1: descT1,
+  remark: null,
+});
       }
     }
   }
@@ -330,6 +389,44 @@ async function insertInChunks(table: string, rows: any[], chunkSize = 500) {
     if (error) {
       throw new Error(`${table}: ${error.message}`);
     }
+  }
+}
+
+async function deleteExistingLayers(projectId: number, layerNames: string[]) {
+  const cleanLayerNames = layerNames
+    .map((x) => String(x ?? "").trim())
+    .filter(Boolean);
+
+  if (cleanLayerNames.length === 0) return;
+
+  const { error: pointsError } = await supabase
+    .from("mapping_points")
+    .delete()
+    .eq("project_id", projectId)
+    .in("layer_name", cleanLayerNames);
+
+  if (pointsError) {
+    throw new Error(`mapping_points delete: ${pointsError.message}`);
+  }
+
+  const { error: linesError } = await supabase
+    .from("mapping_lines")
+    .delete()
+    .eq("project_id", projectId)
+    .in("layer_name", cleanLayerNames);
+
+  if (linesError) {
+    throw new Error(`mapping_lines delete: ${linesError.message}`);
+  }
+
+  const { error: polygonsError } = await supabase
+    .from("mapping_polygons")
+    .delete()
+    .eq("project_id", projectId)
+    .in("layer_name", cleanLayerNames);
+
+  if (polygonsError) {
+    throw new Error(`mapping_polygons delete: ${polygonsError.message}`);
   }
 }
 
@@ -388,28 +485,38 @@ export default function ImportKmlPage() {
       `Found Point=${points.length}, Line=${lines.length}, Polygon=${polygons.length}\nStyles=${Object.keys(styles).length}\nImporting...`
     );
 
-    try {
-      if (points.length > 0) {
-        await insertInChunks("mapping_points", points, 500);
-      }
+try {
+  const layerNames = Array.from(
+    new Set(
+      [
+        ...points.map((p) => p.layer_name),
+        ...lines.map((l) => l.layer_name),
+        ...polygons.map((p) => p.layer_name),
+      ].filter(Boolean)
+    )
+  ) as string[];
 
-      if (lines.length > 0) {
-        await insertInChunks("mapping_lines", lines, 300);
-      }
+  setMessage(
+    `Found Point=${points.length}, Line=${lines.length}, Polygon=${polygons.length}
+Styles=${Object.keys(styles).length}
+Layers=${layerNames.join(", ")}
 
-      if (polygons.length > 0) {
-        await insertInChunks("mapping_polygons", polygons, 300);
-      }
+Replacing existing data in these layers...`
+  );
 
-      const layerNames = Array.from(
-        new Set(
-          [
-            ...points.map((p) => p.layer_name),
-            ...lines.map((l) => l.layer_name),
-            ...polygons.map((p) => p.layer_name),
-          ].filter(Boolean)
-        )
-      );
+  await deleteExistingLayers(projectId, layerNames);
+
+  if (points.length > 0) {
+    await insertInChunks("mapping_points", points, 500);
+  }
+
+  if (lines.length > 0) {
+    await insertInChunks("mapping_lines", lines, 300);
+  }
+
+  if (polygons.length > 0) {
+    await insertInChunks("mapping_polygons", polygons, 300);
+  }
 
       setMessage(
         `Import completed.\nPoint=${points.length}\nLine=${lines.length}\nPolygon=${polygons.length}\nStyles=${Object.keys(styles).length}\nLayers=${layerNames.join(", ")}`

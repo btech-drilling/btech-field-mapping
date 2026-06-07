@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import DeleteProjectButton from "./DeleteProjectButton";
 
 export const dynamic = "force-dynamic";
 
@@ -117,7 +118,9 @@ export default async function ProjectDetailPage({
               >
                 Import KML
               </Link>
-            </div>
+
+                <DeleteProjectButton projectId={id} />
+</div>            
           </div>
 
           <div className="mt-10 grid gap-4 md:grid-cols-4">
