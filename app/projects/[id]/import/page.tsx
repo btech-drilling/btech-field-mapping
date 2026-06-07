@@ -165,14 +165,14 @@ function getDescriptionHtmlValue(pm: Element, fieldName: string) {
 
   const match = rawDescription.match(regex);
 
-  if (match?.[1]) {
-    return cleanText(
-      match[1]
-        .replace(/<br\\s*\\/?>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-    );
-  }
+if (match?.[1]) {
+  return cleanText(
+    match[1]
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+  );
+}
 
   return null;
 }
