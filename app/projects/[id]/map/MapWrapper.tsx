@@ -133,6 +133,12 @@ export default function MapWrapper({
 
     mapInstance.current = map;
 
+    if (addPointMode) {
+      map.getContainer().classList.add("add-point-mode-map");
+    } else {
+      map.getContainer().classList.remove("add-point-mode-map");
+    }
+
     L.tileLayer(
       "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       { attribution: "Tiles © Esri", maxZoom: 19 }
@@ -188,17 +194,6 @@ export default function MapWrapper({
           </div>
         `);
 
-        if (addPointMode) {
-          layer.eachLayer((l: any) => {
-            if (l.getElement) {
-              const el = l.getElement();
-              if (el) {
-                el.style.pointerEvents = "none";
-              }
-            }
-          });
-        }
-
         layer.eachLayer((l: any) => {
           if (l.getLatLngs) {
             const latLngs = l.getLatLngs().flat(2);
@@ -236,17 +231,6 @@ export default function MapWrapper({
             </div>
           </div>
         `);
-
-        if (addPointMode) {
-          layer.eachLayer((l: any) => {
-            if (l.getElement) {
-              const el = l.getElement();
-              if (el) {
-                el.style.pointerEvents = "none";
-              }
-            }
-          });
-        }
 
         layer.eachLayer((l: any) => {
           if (l.getLatLngs) {
@@ -411,6 +395,10 @@ export default function MapWrapper({
 
         .mapping-point-label::before {
           display: none;
+        }
+
+        .add-point-mode-map .leaflet-overlay-pane svg path {
+          pointer-events: none !important;
         }
       `}</style>
 
