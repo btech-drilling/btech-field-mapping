@@ -169,6 +169,22 @@ map.on("popupopen", () => {
 
   if (!button) return;
 
+  const pointIdForCache = button.dataset.pointId;
+
+if (pointIdForCache) {
+  const cachedComment = localStorage.getItem(
+    `mapping_point_comment_${pointIdForCache}`
+  );
+
+  const textarea = document.getElementById(
+    `comment-${pointIdForCache}`
+  ) as HTMLTextAreaElement | null;
+
+  if (textarea && cachedComment !== null) {
+    textarea.value = cachedComment;
+  }
+}
+
   L.DomEvent.disableClickPropagation(button);
 
   button.onclick = async (event) => {
@@ -202,11 +218,16 @@ map.on("popupopen", () => {
       return;
     }
 
-    button.innerText = "Saved";
+localStorage.setItem(
+  `mapping_point_comment_${pointId}`,
+  comment
+);
 
-    setTimeout(() => {
-      router.refresh();
-    }, 500);
+button.innerText = "Saved";
+
+setTimeout(() => {
+  router.refresh();
+}, 500);
   };
 });
 
