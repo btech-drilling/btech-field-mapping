@@ -147,20 +147,6 @@ export default function MapWrapper({
     mapInstance.current = map;
 
 map.on("popupopen", () => {
-const popupEl = document.querySelector(".leaflet-popup") as HTMLElement | null;
-
-if (popupEl) {
-  L.DomEvent.disableClickPropagation(popupEl);
-  L.DomEvent.disableScrollPropagation(popupEl);
-
-  popupEl.addEventListener("mousedown", (e) => e.stopPropagation());
-  popupEl.addEventListener("mouseup", (e) => e.stopPropagation());
-  popupEl.addEventListener("mousemove", (e) => e.stopPropagation());
-  popupEl.addEventListener("click", (e) => e.stopPropagation());
-  popupEl.addEventListener("dblclick", (e) => e.stopPropagation());
-  popupEl.addEventListener("wheel", (e) => e.stopPropagation());
-}
-
   const commentArea = document.querySelector(
     ".point-comment-area"
   ) as HTMLTextAreaElement | null;
@@ -183,7 +169,12 @@ if (popupEl) {
 
   if (!button) return;
 
-  button.onclick = async () => {
+  L.DomEvent.disableClickPropagation(button);
+
+  button.onclick = async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+
     const pointId = button.dataset.pointId;
 
     if (!pointId) return;
@@ -211,11 +202,11 @@ if (popupEl) {
       return;
     }
 
-button.innerText = "Saved";
+    button.innerText = "Saved";
 
-setTimeout(() => {
-  router.refresh();
-}, 500);
+    setTimeout(() => {
+      router.refresh();
+    }, 500);
   };
 });
 
