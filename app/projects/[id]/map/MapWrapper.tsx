@@ -120,6 +120,19 @@ export default function MapWrapper({
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
+  const commentCacheRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    points.forEach((p) => {
+      if (p.id === undefined || p.id === null) return;
+
+      const key = String(p.id);
+
+      if (commentCacheRef.current[key] === undefined) {
+        commentCacheRef.current[key] = p.office_comment ?? "";
+      }
+    });
+  }, [points]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -174,15 +187,15 @@ export default function MapWrapper({
       const pointIdForCache = button.dataset.pointId;
 
       if (pointIdForCache) {
-        const cachedComment = localStorage.getItem(
-          `mapping_point_comment_${pointIdForCache}`
-        );
+        const cachedComment =
+          commentCacheRef.current[pointIdForCache] ??
+          localStorage.getItem(`mapping_point_comment_${pointIdForCache}`);
 
         const textarea = document.getElementById(
           `comment-${pointIdForCache}`
         ) as HTMLTextAreaElement | null;
 
-        if (textarea && cachedComment !== null) {
+        if (textarea && cachedComment !== null && cachedComment !== undefined) {
           textarea.value = cachedComment;
         }
       }
@@ -220,6 +233,7 @@ export default function MapWrapper({
           return;
         }
 
+        commentCacheRef.current[pointId] = comment;
         localStorage.setItem(`mapping_point_comment_${pointId}`, comment);
 
         button.innerText = "Saved";
@@ -368,99 +382,110 @@ export default function MapWrapper({
         const samplePhoto = p.sample_photo_url;
         const outcropPhoto = p.outcrop_photo_url;
         const icon = createPointIcon(p);
-        const commentText = escapeHtml(p.office_comment ?? "");
 
-        const popup = `
-          <div style="width:280px">
-            <div style="font-size:16px;font-weight:bold;margin-bottom:6px;">
-              ${escapeHtml(p.point_code ?? "-")}
-            </div>
+        const buildPopup = () => {
+          const cacheKey = String(p.id);
 
-            <div><b>Status:</b> ${escapeHtml(p.status ?? "-")}</div>
-            <div><b>Layer:</b> ${escapeHtml(p.layer_name ?? "-")}</div>
-            <div><b>Rock:</b> ${escapeHtml(p.rock_type ?? "-")}</div>
-            <div><b>Weathering:</b> ${escapeHtml(p.weathering ?? "-")}</div>
-            <div><b>Alteration:</b> ${escapeHtml(p.alteration ?? "-")}</div>
-            <div><b>Mineralization:</b> ${escapeHtml(p.mineralization ?? "-")}</div>
-            <div><b>Structure:</b> ${escapeHtml(p.structure_type ?? "-")}</div>
-            <div><b>Sample ID:</b> ${escapeHtml(p.sample_id ?? "-")}</div>
+          const latestComment =
+            commentCacheRef.current[cacheKey] ??
+            localStorage.getItem(`mapping_point_comment_${cacheKey}`) ??
+            p.office_comment ??
+            "";
 
-            ${
-              outcropPhoto
-                ? `
-                <div style="margin-top:8px;font-weight:bold;">Outcrop Photo</div>
-                <img src="${escapeHtml(outcropPhoto)}" style="width:100%;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ddd;" />
-              `
-                : ""
-            }
+          const commentText = escapeHtml(latestComment);
 
-            ${
-              samplePhoto
-                ? `
-                <div style="margin-top:8px;font-weight:bold;">Sample Photo</div>
-                <img src="${escapeHtml(samplePhoto)}" style="width:100%;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ddd;" />
-              `
-                : ""
-            }
+          return `
+            <div style="width:280px">
+              <div style="font-size:16px;font-weight:bold;margin-bottom:6px;">
+                ${escapeHtml(p.point_code ?? "-")}
+              </div>
 
-            <hr style="margin:10px 0;" />
+              <div><b>Status:</b> ${escapeHtml(p.status ?? "-")}</div>
+              <div><b>Layer:</b> ${escapeHtml(p.layer_name ?? "-")}</div>
+              <div><b>Rock:</b> ${escapeHtml(p.rock_type ?? "-")}</div>
+              <div><b>Weathering:</b> ${escapeHtml(p.weathering ?? "-")}</div>
+              <div><b>Alteration:</b> ${escapeHtml(p.alteration ?? "-")}</div>
+              <div><b>Mineralization:</b> ${escapeHtml(p.mineralization ?? "-")}</div>
+              <div><b>Structure:</b> ${escapeHtml(p.structure_type ?? "-")}</div>
+              <div><b>Sample ID:</b> ${escapeHtml(p.sample_id ?? "-")}</div>
 
-            <div style="font-size:13px;font-weight:bold;margin-bottom:5px;">
-              Comment
-            </div>
+              ${
+                outcropPhoto
+                  ? `
+                  <div style="margin-top:8px;font-weight:bold;">Outcrop Photo</div>
+                  <img src="${escapeHtml(outcropPhoto)}" style="width:100%;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ddd;" />
+                `
+                  : ""
+              }
 
-            <textarea
-              id="comment-${p.id}"
-              class="point-comment-area"
-              style="
-                width:100%;
-                height:75px;
-                font-size:12px;
-                padding:6px;
-                border:1px solid #cbd5e1;
-                border-radius:6px;
-                resize:vertical;
-                box-sizing:border-box;
-              "
-              placeholder="Add office / field comment..."
-            >${commentText}</textarea>
+              ${
+                samplePhoto
+                  ? `
+                  <div style="margin-top:8px;font-weight:bold;">Sample Photo</div>
+                  <img src="${escapeHtml(samplePhoto)}" style="width:100%;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ddd;" />
+                `
+                  : ""
+              }
 
-            <button
-              class="save-point-comment-btn"
-              data-point-id="${p.id}"
-              style="
-                margin-top:6px;
-                width:100%;
-                padding:7px 8px;
-                background:#0f172a;
-                color:white;
-                border:none;
-                border-radius:6px;
-                font-size:12px;
-                font-weight:bold;
-                cursor:pointer;
-              "
-            >
-              Save Comment
-            </button>
+              <hr style="margin:10px 0;" />
 
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
-              <a
-                href="/projects/${projectId}/points/${p.id}"
-                style="display:block;padding:8px;background:black;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
+              <div style="font-size:13px;font-weight:bold;margin-bottom:5px;">
+                Comment
+              </div>
+
+              <textarea
+                id="comment-${p.id}"
+                class="point-comment-area"
+                style="
+                  width:100%;
+                  height:75px;
+                  font-size:12px;
+                  padding:6px;
+                  border:1px solid #cbd5e1;
+                  border-radius:6px;
+                  resize:vertical;
+                  box-sizing:border-box;
+                "
+                placeholder="Add office / field comment..."
+              >${commentText}</textarea>
+
+              <button
+                class="save-point-comment-btn"
+                data-point-id="${p.id}"
+                style="
+                  margin-top:6px;
+                  width:100%;
+                  padding:7px 8px;
+                  background:#0f172a;
+                  color:white;
+                  border:none;
+                  border-radius:6px;
+                  font-size:12px;
+                  font-weight:bold;
+                  cursor:pointer;
+                "
               >
-                Open
-              </a>
+                Save Comment
+              </button>
 
-              <a
-                href="/projects/${projectId}/points/${p.id}/edit?from=map"
-                style="display:block;padding:8px;background:#2563eb;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
-              >
-                Edit
-              </a>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+                <a
+                  href="/projects/${projectId}/points/${p.id}"
+                  style="display:block;padding:8px;background:black;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
+                >
+                  Open
+                </a>
+
+                <a
+                  href="/projects/${projectId}/points/${p.id}/edit?from=map"
+                  style="display:block;padding:8px;background:#2563eb;color:white;text-align:center;border-radius:6px;text-decoration:none;font-weight:bold;"
+                >
+                  Edit
+                </a>
+              </div>
             </div>
-          </div>
-        `;
+          `;
+        };
 
         const marker = L.marker([Number(p.latitude), Number(p.longitude)], {
           icon,
@@ -471,7 +496,7 @@ export default function MapWrapper({
             offset: [0, -12],
             className: "mapping-point-label",
           })
-          .bindPopup(popup, {
+          .bindPopup(buildPopup, {
             closeOnClick: false,
             autoClose: true,
           });
