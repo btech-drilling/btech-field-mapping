@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
+import { supabase } from "@/lib/supabase";
 
 function getStatusColor(status: string | null) {
   switch (status) {
@@ -21,6 +23,15 @@ function getStatusColor(status: string | null) {
     default:
       return "#2563eb";
   }
+}
+
+function escapeHtml(value: any) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function isMapSheet(poly: any) {
@@ -110,6 +121,8 @@ export default function MapWrapper({
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
+  const router = useRouter();
+
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -133,6 +146,65 @@ export default function MapWrapper({
 
     mapInstance.current = map;
 
+map.on("popupopen", () => {
+  const commentArea = document.querySelector(
+    ".point-comment-area"
+  ) as HTMLTextAreaElement | null;
+
+  if (commentArea) {
+    L.DomEvent.disableClickPropagation(commentArea);
+    L.DomEvent.disableScrollPropagation(commentArea);
+
+    commentArea.addEventListener("mousedown", (e) => e.stopPropagation());
+    commentArea.addEventListener("mouseup", (e) => e.stopPropagation());
+    commentArea.addEventListener("mousemove", (e) => e.stopPropagation());
+    commentArea.addEventListener("click", (e) => e.stopPropagation());
+    commentArea.addEventListener("dblclick", (e) => e.stopPropagation());
+    commentArea.addEventListener("wheel", (e) => e.stopPropagation());
+  }
+
+  const button = document.querySelector(
+    ".save-point-comment-btn"
+  ) as HTMLButtonElement | null;
+
+  if (!button) return;
+
+  button.onclick = async () => {
+    const pointId = button.dataset.pointId;
+
+    if (!pointId) return;
+
+    const textarea = document.getElementById(
+      `comment-${pointId}`
+    ) as HTMLTextAreaElement | null;
+
+    if (!textarea) return;
+
+    const comment = textarea.value;
+
+    button.disabled = true;
+    button.innerText = "Saving...";
+
+    const { error } = await supabase
+      .from("mapping_points")
+      .update({ office_comment: comment })
+      .eq("id", Number(pointId));
+
+    if (error) {
+      button.disabled = false;
+      button.innerText = "Save Comment";
+      alert("Save comment failed: " + error.message);
+      return;
+    }
+
+button.innerText = "Saved";
+
+setTimeout(() => {
+  router.refresh();
+}, 500);
+  };
+});
+
     if (addPointMode) {
       map.getContainer().classList.add("add-point-mode-map");
     } else {
@@ -150,6 +222,7 @@ export default function MapWrapper({
     ).addTo(map);
 
     const boundsItems: [number, number][] = [];
+    const pointBoundsItems: [number, number][] = [];
 
     if (showPolygons) {
       const sortedPolygons = [...polygons].sort(
@@ -179,33 +252,33 @@ export default function MapWrapper({
           },
         }).addTo(map);
 
-layer.bindPopup(`
-  <div style="width:300px">
-    <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
-      ${poly.name ?? "Polygon"}
-    </div>
+        layer.bindPopup(`
+          <div style="width:300px">
+            <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
+              ${escapeHtml(poly.name ?? "Polygon")}
+            </div>
 
-    <div><b>Layer:</b> ${poly.layer_name ?? "-"}</div>
-    <div><b>Type:</b> ${sheet ? "Map Sheet" : "Geology Unit"}</div>
-    <div><b>Feature:</b> ${poly.feature_type ?? "-"}</div>
-    <div><b>Style ID:</b> ${poly.style_id ?? "-"}</div>
+            <div><b>Layer:</b> ${escapeHtml(poly.layer_name ?? "-")}</div>
+            <div><b>Type:</b> ${sheet ? "Map Sheet" : "Geology Unit"}</div>
+            <div><b>Feature:</b> ${escapeHtml(poly.feature_type ?? "-")}</div>
+            <div><b>Style ID:</b> ${escapeHtml(poly.style_id ?? "-")}</div>
 
-    ${
-      poly.desc_t1
-        ? `
-          <div style="margin-top:10px;padding:8px;border-radius:6px;background:#f3f4f6;color:#111827;font-size:12px;line-height:1.45;">
-            <div style="font-weight:bold;margin-bottom:4px;">Description</div>
-            ${poly.desc_t1}
+            ${
+              poly.desc_t1
+                ? `
+                  <div style="margin-top:10px;padding:8px;border-radius:6px;background:#f3f4f6;color:#111827;font-size:12px;line-height:1.45;">
+                    <div style="font-weight:bold;margin-bottom:4px;">Description</div>
+                    ${escapeHtml(poly.desc_t1)}
+                  </div>
+                `
+                : ""
+            }
+
+            <div style="margin-top:6px;color:#555;font-size:12px;">
+              ${escapeHtml(poly.folder_path ?? "")}
+            </div>
           </div>
-        `
-        : ""
-    }
-
-    <div style="margin-top:6px;color:#555;font-size:12px;">
-      ${poly.folder_path ?? ""}
-    </div>
-  </div>
-`);
+        `);
 
         layer.eachLayer((l: any) => {
           if (l.getLatLngs) {
@@ -235,12 +308,12 @@ layer.bindPopup(`
         layer.bindPopup(`
           <div style="width:260px">
             <div style="font-size:15px;font-weight:bold;margin-bottom:6px;">
-              ${line.name ?? "Line"}
+              ${escapeHtml(line.name ?? "Line")}
             </div>
-            <div><b>Layer:</b> ${line.layer_name ?? "-"}</div>
-            <div><b>Type:</b> ${line.feature_type ?? "-"}</div>
+            <div><b>Layer:</b> ${escapeHtml(line.layer_name ?? "-")}</div>
+            <div><b>Type:</b> ${escapeHtml(line.feature_type ?? "-")}</div>
             <div style="margin-top:6px;color:#555;font-size:12px;">
-              ${line.folder_path ?? ""}
+              ${escapeHtml(line.folder_path ?? "")}
             </div>
           </div>
         `);
@@ -269,27 +342,28 @@ layer.bindPopup(`
         const samplePhoto = p.sample_photo_url;
         const outcropPhoto = p.outcrop_photo_url;
         const icon = createPointIcon(p);
+        const commentText = escapeHtml(p.office_comment ?? "");
 
         const popup = `
-          <div style="width:260px">
+          <div style="width:280px">
             <div style="font-size:16px;font-weight:bold;margin-bottom:6px;">
-              ${p.point_code ?? "-"}
+              ${escapeHtml(p.point_code ?? "-")}
             </div>
 
-            <div><b>Status:</b> ${p.status ?? "-"}</div>
-            <div><b>Layer:</b> ${p.layer_name ?? "-"}</div>
-            <div><b>Rock:</b> ${p.rock_type ?? "-"}</div>
-            <div><b>Weathering:</b> ${p.weathering ?? "-"}</div>
-            <div><b>Alteration:</b> ${p.alteration ?? "-"}</div>
-            <div><b>Mineralization:</b> ${p.mineralization ?? "-"}</div>
-            <div><b>Structure:</b> ${p.structure_type ?? "-"}</div>
-            <div><b>Sample ID:</b> ${p.sample_id ?? "-"}</div>
+            <div><b>Status:</b> ${escapeHtml(p.status ?? "-")}</div>
+            <div><b>Layer:</b> ${escapeHtml(p.layer_name ?? "-")}</div>
+            <div><b>Rock:</b> ${escapeHtml(p.rock_type ?? "-")}</div>
+            <div><b>Weathering:</b> ${escapeHtml(p.weathering ?? "-")}</div>
+            <div><b>Alteration:</b> ${escapeHtml(p.alteration ?? "-")}</div>
+            <div><b>Mineralization:</b> ${escapeHtml(p.mineralization ?? "-")}</div>
+            <div><b>Structure:</b> ${escapeHtml(p.structure_type ?? "-")}</div>
+            <div><b>Sample ID:</b> ${escapeHtml(p.sample_id ?? "-")}</div>
 
             ${
               outcropPhoto
                 ? `
                 <div style="margin-top:8px;font-weight:bold;">Outcrop Photo</div>
-                <img src="${outcropPhoto}" style="width:100%;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ddd;" />
+                <img src="${escapeHtml(outcropPhoto)}" style="width:100%;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ddd;" />
               `
                 : ""
             }
@@ -298,10 +372,51 @@ layer.bindPopup(`
               samplePhoto
                 ? `
                 <div style="margin-top:8px;font-weight:bold;">Sample Photo</div>
-                <img src="${samplePhoto}" style="width:100%;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ddd;" />
+                <img src="${escapeHtml(samplePhoto)}" style="width:100%;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ddd;" />
               `
                 : ""
             }
+
+            <hr style="margin:10px 0;" />
+
+            <div style="font-size:13px;font-weight:bold;margin-bottom:5px;">
+              Comment
+            </div>
+
+            <textarea
+  id="comment-${p.id}"
+  class="point-comment-area"
+              style="
+                width:100%;
+                height:75px;
+                font-size:12px;
+                padding:6px;
+                border:1px solid #cbd5e1;
+                border-radius:6px;
+                resize:vertical;
+                box-sizing:border-box;
+              "
+              placeholder="Add office / field comment..."
+            >${commentText}</textarea>
+
+            <button
+                class="save-point-comment-btn"
+  data-point-id="${p.id}"
+              style="
+                margin-top:6px;
+                width:100%;
+                padding:7px 8px;
+                background:#0f172a;
+                color:white;
+                border:none;
+                border-radius:6px;
+                font-size:12px;
+                font-weight:bold;
+                cursor:pointer;
+              "
+            >
+              Save Comment
+            </button>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
               <a
@@ -330,10 +445,19 @@ layer.bindPopup(`
             offset: [0, -12],
             className: "mapping-point-label",
           })
-          .bindPopup(popup);
+          .bindPopup(popup, {
+  closeOnClick: false,
+  autoClose: false,
+});
 
         clusterGroup.addLayer(marker);
-        boundsItems.push([Number(p.latitude), Number(p.longitude)]);
+        const pointLatLng: [number, number] = [
+  Number(p.latitude),
+  Number(p.longitude),
+];
+
+pointBoundsItems.push(pointLatLng);
+boundsItems.push(pointLatLng);
       });
 
       map.addLayer(clusterGroup);
@@ -371,11 +495,18 @@ layer.bindPopup(`
       });
     }
 
-    if (boundsItems.length > 0) {
-      map.fitBounds(L.latLngBounds(boundsItems), { padding: [40, 40] });
-    } else {
-      map.setView([13.7563, 100.5018], 6);
-    }
+if (showPoints && pointBoundsItems.length > 0) {
+  map.fitBounds(L.latLngBounds(pointBoundsItems), {
+    padding: [60, 60],
+    maxZoom: 15,
+  });
+} else if (boundsItems.length > 0) {
+  map.fitBounds(L.latLngBounds(boundsItems), {
+    padding: [40, 40],
+  });
+} else {
+  map.setView([13.7563, 100.5018], 6);
+}
 
     return () => {
       map.remove();
@@ -390,6 +521,7 @@ layer.bindPopup(`
     showLines,
     showPolygons,
     addPointMode,
+    router,
   ]);
 
   return (

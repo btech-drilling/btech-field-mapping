@@ -13,23 +13,7 @@ export default async function ProjectMapPage({
 
   const { data: points, error: pointsError } = await supabase
     .from("mapping_points")
-    .select(`
-      id,
-      point_code,
-      latitude,
-      longitude,
-      elevation,
-      status,
-      rock_type,
-      weathering,
-      alteration,
-      mineralization,
-      structure_type,
-      sample_id,
-      sample_photo_url,
-      outcrop_photo_url,
-      layer_name
-    `)
+    .select("*")
     .eq("project_id", id)
     .order("point_code");
 
@@ -55,53 +39,53 @@ export default async function ProjectMapPage({
     return <div className="p-6">Error: {lineLayerError.message}</div>;
   }
 
-const pointLayers = (points ?? [])
-  .map((x) => x.layer_name)
-  .filter(Boolean);
+  const pointLayers = (points ?? [])
+    .map((x) => x.layer_name)
+    .filter(Boolean);
 
-const polygonLayerNames = (polygonLayers ?? [])
-  .map((x) => x.layer_name)
-  .filter(Boolean);
+  const polygonLayerNames = (polygonLayers ?? [])
+    .map((x) => x.layer_name)
+    .filter(Boolean);
 
-const lineLayerNames = (lineLayers ?? [])
-  .map((x) => x.layer_name)
-  .filter(Boolean);
+  const lineLayerNames = (lineLayers ?? [])
+    .map((x) => x.layer_name)
+    .filter(Boolean);
 
-const layerNames = Array.from(
-  new Set([...polygonLayerNames, ...lineLayerNames, ...pointLayers])
-).sort((a, b) => {
-  const getTvNumber = (value: string) => {
-    const match = value.match(/^TV(\d+)$/i);
-    return match ? Number(match[1]) : null;
-  };
+  const layerNames = Array.from(
+    new Set([...polygonLayerNames, ...lineLayerNames, ...pointLayers])
+  ).sort((a, b) => {
+    const getTvNumber = (value: string) => {
+      const match = value.match(/^TV(\d+)$/i);
+      return match ? Number(match[1]) : null;
+    };
 
-  const aTv = getTvNumber(a);
-  const bTv = getTvNumber(b);
+    const aTv = getTvNumber(a);
+    const bTv = getTvNumber(b);
 
-  if (aTv !== null && bTv !== null) return aTv - bTv;
-  if (aTv !== null) return -1;
-  if (bTv !== null) return 1;
+    if (aTv !== null && bTv !== null) return aTv - bTv;
+    if (aTv !== null) return -1;
+    if (bTv !== null) return 1;
 
-  return a.localeCompare(b);
-});
+    return a.localeCompare(b);
+  });
 
-const { count: totalLines } = await supabase
-  .from("mapping_lines")
-  .select("*", { count: "exact", head: true })
-  .eq("project_id", id);
+  const { count: totalLines } = await supabase
+    .from("mapping_lines")
+    .select("*", { count: "exact", head: true })
+    .eq("project_id", id);
 
-const { count: totalPolygons } = await supabase
-  .from("mapping_polygons")
-  .select("*", { count: "exact", head: true })
-  .eq("project_id", id);
+  const { count: totalPolygons } = await supabase
+    .from("mapping_polygons")
+    .select("*", { count: "exact", head: true })
+    .eq("project_id", id);
 
   return (
-<MapPageClient
-  projectId={id}
-  points={points ?? []}
-  initialLayerNames={layerNames}
-  totalLines={totalLines ?? 0}
-  totalPolygons={totalPolygons ?? 0}
-/>
+    <MapPageClient
+      projectId={id}
+      points={points ?? []}
+      initialLayerNames={layerNames}
+      totalLines={totalLines ?? 0}
+      totalPolygons={totalPolygons ?? 0}
+    />
   );
 }
