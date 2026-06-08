@@ -120,19 +120,6 @@ export default function MapWrapper({
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
-  const commentCacheRef = useRef<Record<string, string>>({});
-
-  useEffect(() => {
-    points.forEach((p) => {
-      if (p.id === undefined || p.id === null) return;
-
-      const key = String(p.id);
-
-      if (commentCacheRef.current[key] === undefined) {
-        commentCacheRef.current[key] = p.office_comment ?? "";
-      }
-    });
-  }, [points]);
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -155,95 +142,6 @@ export default function MapWrapper({
     });
 
     mapInstance.current = map;
-
-    map.on("popupopen", () => {
-      const commentArea = document.querySelector(
-        ".point-comment-area"
-      ) as HTMLTextAreaElement | null;
-
-      if (commentArea) {
-        L.DomEvent.disableClickPropagation(commentArea);
-        L.DomEvent.disableScrollPropagation(commentArea);
-
-        const stop = (e: Event) => e.stopPropagation();
-
-        commentArea.addEventListener("mousedown", stop);
-        commentArea.addEventListener("mouseup", stop);
-        commentArea.addEventListener("mousemove", stop);
-        commentArea.addEventListener("pointerdown", stop);
-        commentArea.addEventListener("pointerup", stop);
-        commentArea.addEventListener("pointermove", stop);
-        commentArea.addEventListener("click", stop);
-        commentArea.addEventListener("dblclick", stop);
-        commentArea.addEventListener("wheel", stop);
-      }
-
-      const button = document.querySelector(
-        ".save-point-comment-btn"
-      ) as HTMLButtonElement | null;
-
-      if (!button) return;
-
-      const pointIdForCache = button.dataset.pointId;
-
-      if (pointIdForCache) {
-        const cachedComment =
-          commentCacheRef.current[pointIdForCache] ??
-          localStorage.getItem(`mapping_point_comment_${pointIdForCache}`);
-
-        const textarea = document.getElementById(
-          `comment-${pointIdForCache}`
-        ) as HTMLTextAreaElement | null;
-
-        if (textarea && cachedComment !== null && cachedComment !== undefined) {
-          textarea.value = cachedComment;
-        }
-      }
-
-      L.DomEvent.disableClickPropagation(button);
-
-      button.onclick = async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        const pointId = button.dataset.pointId;
-
-        if (!pointId) return;
-
-        const textarea = document.getElementById(
-          `comment-${pointId}`
-        ) as HTMLTextAreaElement | null;
-
-        if (!textarea) return;
-
-        const comment = textarea.value;
-
-        button.disabled = true;
-        button.innerText = "Saving...";
-
-        const { error } = await supabase
-          .from("mapping_points")
-          .update({ office_comment: comment })
-          .eq("id", Number(pointId));
-
-        if (error) {
-          button.disabled = false;
-          button.innerText = "Save Comment";
-          alert("Save comment failed: " + error.message);
-          return;
-        }
-
-        commentCacheRef.current[pointId] = comment;
-        localStorage.setItem(`mapping_point_comment_${pointId}`, comment);
-
-        button.innerText = "Saved";
-
-        setTimeout(() => {
-          button.disabled = false;
-          button.innerText = "Save Comment";
-        }, 1000);
-      };
-    });
 
     if (addPointMode) {
       map.getContainer().classList.add("add-point-mode-map");
@@ -384,15 +282,7 @@ export default function MapWrapper({
         const icon = createPointIcon(p);
 
         const buildPopup = () => {
-          const cacheKey = String(p.id);
-
-          const latestComment =
-            commentCacheRef.current[cacheKey] ??
-            localStorage.getItem(`mapping_point_comment_${cacheKey}`) ??
-            p.office_comment ??
-            "";
-
-          const commentText = escapeHtml(latestComment);
+          const commentText = escapeHtml(p.office_comment ?? "");
 
           return `
             <div style="width:280px">
@@ -434,7 +324,6 @@ export default function MapWrapper({
               </div>
 
               <textarea
-                id="comment-${p.id}"
                 class="point-comment-area"
                 style="
                   width:100%;
@@ -451,7 +340,6 @@ export default function MapWrapper({
 
               <button
                 class="save-point-comment-btn"
-                data-point-id="${p.id}"
                 style="
                   margin-top:6px;
                   width:100%;
@@ -496,10 +384,76 @@ export default function MapWrapper({
             offset: [0, -12],
             className: "mapping-point-label",
           })
-          .bindPopup(buildPopup, {
+          .bindPopup(buildPopup(), {
             closeOnClick: false,
             autoClose: true,
           });
+
+        marker.on("popupopen", () => {
+          const popupEl = marker.getPopup()?.getElement();
+
+          if (!popupEl) return;
+
+          const textarea = popupEl.querySelector(
+            ".point-comment-area"
+          ) as HTMLTextAreaElement | null;
+
+          const button = popupEl.querySelector(
+            ".save-point-comment-btn"
+          ) as HTMLButtonElement | null;
+
+          if (textarea) {
+            L.DomEvent.disableClickPropagation(textarea);
+            L.DomEvent.disableScrollPropagation(textarea);
+
+            const stop = (e: Event) => e.stopPropagation();
+
+            textarea.addEventListener("mousedown", stop);
+            textarea.addEventListener("mouseup", stop);
+            textarea.addEventListener("mousemove", stop);
+            textarea.addEventListener("pointerdown", stop);
+            textarea.addEventListener("pointerup", stop);
+            textarea.addEventListener("pointermove", stop);
+            textarea.addEventListener("click", stop);
+            textarea.addEventListener("dblclick", stop);
+            textarea.addEventListener("wheel", stop);
+          }
+
+          if (!button || !textarea) return;
+
+          L.DomEvent.disableClickPropagation(button);
+
+          button.onclick = async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+
+            const comment = textarea.value;
+
+            button.disabled = true;
+            button.innerText = "Saving...";
+
+            const { error } = await supabase
+              .from("mapping_points")
+              .update({ office_comment: comment })
+              .eq("id", Number(p.id));
+
+            if (error) {
+              button.disabled = false;
+              button.innerText = "Save Comment";
+              alert("Save comment failed: " + error.message);
+              return;
+            }
+
+            p.office_comment = comment;
+
+            button.innerText = "Saved";
+
+            setTimeout(() => {
+              marker.setPopupContent(buildPopup());
+              marker.openPopup();
+            }, 300);
+          };
+        });
 
         clusterGroup.addLayer(marker);
 
