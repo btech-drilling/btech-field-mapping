@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster";
@@ -121,8 +120,6 @@ export default function MapWrapper({
 }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
-  const router = useRouter();
-
 
   useEffect(() => {
     if (!mapRef.current) return;
@@ -146,90 +143,93 @@ export default function MapWrapper({
 
     mapInstance.current = map;
 
-map.on("popupopen", () => {
-  const commentArea = document.querySelector(
-    ".point-comment-area"
-  ) as HTMLTextAreaElement | null;
+    map.on("popupopen", () => {
+      const commentArea = document.querySelector(
+        ".point-comment-area"
+      ) as HTMLTextAreaElement | null;
 
-  if (commentArea) {
-    L.DomEvent.disableClickPropagation(commentArea);
-    L.DomEvent.disableScrollPropagation(commentArea);
+      if (commentArea) {
+        L.DomEvent.disableClickPropagation(commentArea);
+        L.DomEvent.disableScrollPropagation(commentArea);
 
-    commentArea.addEventListener("mousedown", (e) => e.stopPropagation());
-    commentArea.addEventListener("mouseup", (e) => e.stopPropagation());
-    commentArea.addEventListener("mousemove", (e) => e.stopPropagation());
-    commentArea.addEventListener("click", (e) => e.stopPropagation());
-    commentArea.addEventListener("dblclick", (e) => e.stopPropagation());
-    commentArea.addEventListener("wheel", (e) => e.stopPropagation());
-  }
+        const stop = (e: Event) => e.stopPropagation();
 
-  const button = document.querySelector(
-    ".save-point-comment-btn"
-  ) as HTMLButtonElement | null;
+        commentArea.addEventListener("mousedown", stop);
+        commentArea.addEventListener("mouseup", stop);
+        commentArea.addEventListener("mousemove", stop);
+        commentArea.addEventListener("pointerdown", stop);
+        commentArea.addEventListener("pointerup", stop);
+        commentArea.addEventListener("pointermove", stop);
+        commentArea.addEventListener("click", stop);
+        commentArea.addEventListener("dblclick", stop);
+        commentArea.addEventListener("wheel", stop);
+      }
 
-  if (!button) return;
+      const button = document.querySelector(
+        ".save-point-comment-btn"
+      ) as HTMLButtonElement | null;
 
-  const pointIdForCache = button.dataset.pointId;
+      if (!button) return;
 
-if (pointIdForCache) {
-  const cachedComment = localStorage.getItem(
-    `mapping_point_comment_${pointIdForCache}`
-  );
+      const pointIdForCache = button.dataset.pointId;
 
-  const textarea = document.getElementById(
-    `comment-${pointIdForCache}`
-  ) as HTMLTextAreaElement | null;
+      if (pointIdForCache) {
+        const cachedComment = localStorage.getItem(
+          `mapping_point_comment_${pointIdForCache}`
+        );
 
-  if (textarea && cachedComment !== null) {
-    textarea.value = cachedComment;
-  }
-}
+        const textarea = document.getElementById(
+          `comment-${pointIdForCache}`
+        ) as HTMLTextAreaElement | null;
 
-  L.DomEvent.disableClickPropagation(button);
+        if (textarea && cachedComment !== null) {
+          textarea.value = cachedComment;
+        }
+      }
 
-  button.onclick = async (event) => {
-    event.preventDefault();
-    event.stopPropagation();
+      L.DomEvent.disableClickPropagation(button);
 
-    const pointId = button.dataset.pointId;
+      button.onclick = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
 
-    if (!pointId) return;
+        const pointId = button.dataset.pointId;
 
-    const textarea = document.getElementById(
-      `comment-${pointId}`
-    ) as HTMLTextAreaElement | null;
+        if (!pointId) return;
 
-    if (!textarea) return;
+        const textarea = document.getElementById(
+          `comment-${pointId}`
+        ) as HTMLTextAreaElement | null;
 
-    const comment = textarea.value;
+        if (!textarea) return;
 
-    button.disabled = true;
-    button.innerText = "Saving...";
+        const comment = textarea.value;
 
-    const { error } = await supabase
-      .from("mapping_points")
-      .update({ office_comment: comment })
-      .eq("id", Number(pointId));
+        button.disabled = true;
+        button.innerText = "Saving...";
 
-    if (error) {
-      button.disabled = false;
-      button.innerText = "Save Comment";
-      alert("Save comment failed: " + error.message);
-      return;
-    }
+        const { error } = await supabase
+          .from("mapping_points")
+          .update({ office_comment: comment })
+          .eq("id", Number(pointId));
 
-localStorage.setItem(
-  `mapping_point_comment_${pointId}`,
-  comment
-);
+        if (error) {
+          button.disabled = false;
+          button.innerText = "Save Comment";
+          alert("Save comment failed: " + error.message);
+          return;
+        }
 
-button.innerText = "Saved";
+        localStorage.setItem(`mapping_point_comment_${pointId}`, comment);
 
-setTimeout(() => {
-  router.refresh();
-}, 500);
-  };
-});
+        button.innerText = "Saved";
+
+        setTimeout(() => {
+          button.disabled = false;
+          button.innerText = "Save Comment";
+        }, 1000);
+      };
+    });
 
     if (addPointMode) {
       map.getContainer().classList.add("add-point-mode-map");
@@ -410,8 +410,8 @@ setTimeout(() => {
             </div>
 
             <textarea
-  id="comment-${p.id}"
-  class="point-comment-area"
+              id="comment-${p.id}"
+              class="point-comment-area"
               style="
                 width:100%;
                 height:75px;
@@ -426,8 +426,8 @@ setTimeout(() => {
             >${commentText}</textarea>
 
             <button
-                class="save-point-comment-btn"
-  data-point-id="${p.id}"
+              class="save-point-comment-btn"
+              data-point-id="${p.id}"
               style="
                 margin-top:6px;
                 width:100%;
@@ -472,18 +472,19 @@ setTimeout(() => {
             className: "mapping-point-label",
           })
           .bindPopup(popup, {
-  closeOnClick: false,
-  autoClose: true,
-});
+            closeOnClick: false,
+            autoClose: true,
+          });
 
         clusterGroup.addLayer(marker);
-        const pointLatLng: [number, number] = [
-  Number(p.latitude),
-  Number(p.longitude),
-];
 
-pointBoundsItems.push(pointLatLng);
-boundsItems.push(pointLatLng);
+        const pointLatLng: [number, number] = [
+          Number(p.latitude),
+          Number(p.longitude),
+        ];
+
+        pointBoundsItems.push(pointLatLng);
+        boundsItems.push(pointLatLng);
       });
 
       map.addLayer(clusterGroup);
@@ -521,18 +522,18 @@ boundsItems.push(pointLatLng);
       });
     }
 
-if (showPoints && pointBoundsItems.length > 0) {
-  map.fitBounds(L.latLngBounds(pointBoundsItems), {
-    padding: [60, 60],
-    maxZoom: 15,
-  });
-} else if (boundsItems.length > 0) {
-  map.fitBounds(L.latLngBounds(boundsItems), {
-    padding: [40, 40],
-  });
-} else {
-  map.setView([13.7563, 100.5018], 6);
-}
+    if (showPoints && pointBoundsItems.length > 0) {
+      map.fitBounds(L.latLngBounds(pointBoundsItems), {
+        padding: [60, 60],
+        maxZoom: 15,
+      });
+    } else if (boundsItems.length > 0) {
+      map.fitBounds(L.latLngBounds(boundsItems), {
+        padding: [40, 40],
+      });
+    } else {
+      map.setView([13.7563, 100.5018], 6);
+    }
 
     return () => {
       map.remove();
@@ -547,7 +548,6 @@ if (showPoints && pointBoundsItems.length > 0) {
     showLines,
     showPolygons,
     addPointMode,
-    router,
   ]);
 
   return (
