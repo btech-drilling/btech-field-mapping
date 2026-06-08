@@ -446,8 +446,8 @@ setTimeout(() => {
             className: "mapping-point-label",
           })
           .bindPopup(popup, {
-  closeOnClick: false,
-  autoClose: false,
+  closeOnClick: true,
+  autoClose: true,
 });
 
         clusterGroup.addLayer(marker);
