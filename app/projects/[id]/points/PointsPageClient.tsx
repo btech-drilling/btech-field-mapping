@@ -3,6 +3,11 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 
+type MorePhoto = {
+  url: string;
+  description?: string;
+};
+
 function getStatusStyle(status: string | null) {
   switch (status) {
     case "COMPLETED":
@@ -17,6 +22,56 @@ function getStatusStyle(status: string | null) {
     default:
       return "bg-blue-100 text-blue-700";
   }
+}
+
+function getPointPhotos(p: any) {
+  const photos: { url: string; label: string; description: string }[] = [];
+
+  if (p.outcrop_photo_url) {
+    photos.push({
+      url: p.outcrop_photo_url,
+      label: "Outcrop Photo",
+      description: "",
+    });
+  }
+
+  if (p.sample_photo_url) {
+    photos.push({
+      url: p.sample_photo_url,
+      label: "Sample Photo",
+      description: "",
+    });
+  }
+
+  if (Array.isArray(p.more_photos)) {
+    p.more_photos.forEach((photo: MorePhoto, index: number) => {
+      if (photo?.url) {
+        photos.push({
+          url: String(photo.url),
+          label: `More Photo ${index + 1}`,
+          description: String(photo.description ?? ""),
+        });
+      }
+    });
+  } else if (Array.isArray(p.photo_urls)) {
+    p.photo_urls.forEach((url: string, index: number) => {
+      if (url) {
+        photos.push({
+          url,
+          label: `More Photo ${index + 1}`,
+          description: "",
+        });
+      }
+    });
+  }
+
+  const seen = new Set<string>();
+
+  return photos.filter((photo) => {
+    if (seen.has(photo.url)) return false;
+    seen.add(photo.url);
+    return true;
+  });
 }
 
 export default function PointsPageClient({
@@ -35,16 +90,20 @@ export default function PointsPageClient({
     const q = search.trim().toLowerCase();
 
     return points.filter((p) => {
+      const photos = getPointPhotos(p);
+
       const matchSearch =
         !q ||
         String(p.point_code ?? "").toLowerCase().includes(q) ||
         String(p.sample_id ?? "").toLowerCase().includes(q) ||
-        String(p.rock_type ?? "").toLowerCase().includes(q);
+        String(p.rock_type ?? "").toLowerCase().includes(q) ||
+        photos.some((photo) =>
+          photo.description.toLowerCase().includes(q)
+        );
 
       const matchStatus = status === "ALL" || p.status === status;
       const matchSample = !sampleOnly || Boolean(p.sample_id);
-      const matchPhoto =
-        !photoOnly || Boolean(p.sample_photo_url || p.outcrop_photo_url);
+      const matchPhoto = !photoOnly || photos.length > 0;
 
       return matchSearch && matchStatus && matchSample && matchPhoto;
     });
@@ -92,7 +151,7 @@ export default function PointsPageClient({
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search point / sample / rock type..."
+              placeholder="Search point / sample / rock type / photo description..."
               className="rounded-xl border border-white/10 bg-white/10 px-4 py-3 text-white placeholder:text-slate-400"
             />
 
@@ -137,26 +196,49 @@ export default function PointsPageClient({
 
         <section className="mt-6 grid gap-4">
           {filteredPoints.map((p) => {
-            const thumbnail = p.outcrop_photo_url || p.sample_photo_url;
+            const photos = getPointPhotos(p);
+            const mainPhoto = photos[0];
+            const firstDescription = photos.find(
+              (photo) => photo.description.trim() !== ""
+            )?.description;
 
             return (
               <div
                 key={p.id}
                 className="overflow-hidden rounded-3xl border border-white/10 bg-white text-slate-950 shadow-xl"
               >
-                <div className="grid gap-0 md:grid-cols-[140px_1fr_auto]">
+                <div className="grid gap-0 md:grid-cols-[180px_1fr_auto]">
                   <Link
                     href={`/projects/${projectId}/points/${p.id}`}
                     className="block bg-slate-100"
                   >
-                    {thumbnail ? (
-                      <img
-                        src={thumbnail}
-                        alt={p.point_code}
-                        className="h-full min-h-36 w-full object-cover"
-                      />
+                    {mainPhoto ? (
+                      <div className="relative grid h-full min-h-40 grid-cols-2 gap-1 p-1">
+                        {photos.slice(0, 4).map((photo, index) => (
+                          <div
+                            key={`${photo.url}-${index}`}
+                            className={`relative overflow-hidden rounded-xl bg-slate-200 ${
+                              photos.length === 1 ? "col-span-2 row-span-2" : ""
+                            }`}
+                          >
+                            <img
+                              src={photo.url}
+                              alt={`${p.point_code ?? "point"} photo ${
+                                index + 1
+                              }`}
+                              className="h-full min-h-20 w-full object-cover"
+                            />
+
+                            {index === 3 && photos.length > 4 && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/55 text-lg font-black text-white">
+                                +{photos.length - 4}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     ) : (
-                      <div className="flex h-full min-h-36 items-center justify-center text-sm text-slate-400">
+                      <div className="flex h-full min-h-40 items-center justify-center text-sm text-slate-400">
                         No Photo
                       </div>
                     )}
@@ -182,6 +264,12 @@ export default function PointsPageClient({
                           Sample: {p.sample_id}
                         </span>
                       )}
+
+                      {photos.length > 0 && (
+                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                          Photos: {photos.length}
+                        </span>
+                      )}
                     </div>
 
                     <div className="mt-3 grid gap-1 text-sm text-slate-600 md:grid-cols-2">
@@ -192,6 +280,15 @@ export default function PointsPageClient({
                       <div>Lat: {p.latitude ?? "-"}</div>
                       <div>Lon: {p.longitude ?? "-"}</div>
                     </div>
+
+                    {firstDescription && (
+                      <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">
+                        <div className="mb-1 font-semibold text-slate-500">
+                          Photo Note
+                        </div>
+                        <div className="line-clamp-2">{firstDescription}</div>
+                      </div>
+                    )}
                   </Link>
 
                   <div className="grid gap-2 border-t bg-slate-50 p-4 md:w-44 md:border-l md:border-t-0">

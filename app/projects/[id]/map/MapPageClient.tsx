@@ -61,9 +61,9 @@ async function fetchLayerData(projectId: string, layerName: string) {
 
     supabase
       .from("mapping_polygons")
-.select(
-  "id,name,feature_type,geojson,stroke_color,fill_color,fill_opacity,style_id,layer_name,folder_path,desc_t1"
-)
+      .select(
+        "id,name,feature_type,geojson,stroke_color,fill_color,fill_opacity,style_id,layer_name,folder_path,desc_t1"
+      )
       .eq("project_id", projectId)
       .eq("layer_name", layerName),
   ]);
@@ -217,58 +217,82 @@ export default function MapPageClient({
     if (layers.length === 0) return null;
 
     const allOn = layers.every((layer) => visibleLayers.includes(layer));
+    const activeCount = layers.filter((layer) =>
+      visibleLayers.includes(layer)
+    ).length;
 
     return (
-      <div className="rounded-lg border bg-white p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="font-semibold">{title}</div>
+      <div className="rounded-2xl border border-slate-700 bg-slate-900 p-3 shadow-lg">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div>
+            <div className="font-bold text-white">{title}</div>
+            <div className="mt-0.5 text-xs text-slate-400">
+              {activeCount} / {layers.length} active
+            </div>
+          </div>
 
           <button
             type="button"
             onClick={() => toggleGroup(layers)}
-            className="rounded border px-2 py-1 text-xs hover:bg-gray-50"
+            className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition ${
+              allOn
+                ? "border-red-400 bg-red-950 text-red-200 hover:bg-red-900"
+                : "border-emerald-400 bg-emerald-950 text-emerald-200 hover:bg-emerald-900"
+            }`}
           >
             {allOn ? "Hide" : "Show"}
           </button>
         </div>
 
         <div className="flex flex-wrap gap-2 text-sm">
-          {layers.map((layer) => (
-            <label
-              key={layer}
-              className={`flex items-center gap-2 rounded border px-2 py-1 ${
-                visibleLayers.includes(layer)
-                  ? "bg-gray-100"
-                  : "bg-white text-gray-500"
-              }`}
-            >
-              <input
-                type="checkbox"
-                checked={visibleLayers.includes(layer)}
-                onChange={() => toggleLayer(layer)}
-              />
-              {getLayerLabel(layer)}
-              {loadingLayers[layer] ? "..." : ""}
-            </label>
-          ))}
+          {layers.map((layer) => {
+            const active = visibleLayers.includes(layer);
+
+            return (
+              <label
+                key={layer}
+                className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                  active
+                    ? "border-emerald-400 bg-emerald-950 text-emerald-100 ring-1 ring-emerald-400/30"
+                    : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={active}
+                  onChange={() => toggleLayer(layer)}
+                  className="accent-emerald-500"
+                />
+                <span>{getLayerLabel(layer)}</span>
+                {loadingLayers[layer] ? (
+                  <span className="text-slate-400">...</span>
+                ) : null}
+              </label>
+            );
+          })}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-100">
+    <div className="min-h-screen bg-slate-950 text-white">
       <div className="flex flex-col">
-        <div className="border-b bg-white px-4 py-3">
+        <div className="border-b border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-emerald-950 px-4 py-4 shadow-xl">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <Link href={`/projects/${projectId}`} className="text-sm underline">
+              <Link
+                href={`/projects/${projectId}`}
+                className="text-sm font-semibold text-emerald-300 underline underline-offset-4 hover:text-emerald-200"
+              >
                 ← Back to Project
               </Link>
 
-              <h1 className="mt-1 text-xl font-bold">Field Mapping Map</h1>
+              <h1 className="mt-2 text-2xl font-black tracking-tight text-white">
+                Field Mapping Map
+              </h1>
 
-              <p className="text-sm text-gray-500">
+              <p className="mt-1 text-sm text-slate-300">
                 Points: {showPoints ? filteredPoints.length : 0}/{points.length} |
                 Lines: {showLines ? filteredLines.length : 0}/{totalLines} |
                 Polygons: {showPolygons ? filteredPolygons.length : 0}/
@@ -276,7 +300,7 @@ export default function MapPageClient({
               </p>
 
               {addPointMode && (
-                <p className="mt-1 text-sm font-semibold text-emerald-700">
+                <p className="mt-1 text-sm font-semibold text-emerald-300">
                   Add Point Mode is ON — click anywhere on the map to add a point.
                 </p>
               )}
@@ -287,14 +311,14 @@ export default function MapPageClient({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search point code..."
-                className="w-64 rounded border px-3 py-2 text-sm"
+                className="w-64 rounded-xl border border-slate-600 bg-slate-950 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20"
               />
 
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch("")}
-                  className="rounded border px-3 py-2 text-sm"
+                  className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
                 >
                   Clear
                 </button>
@@ -303,10 +327,10 @@ export default function MapPageClient({
               <button
                 type="button"
                 onClick={() => setAddPointMode((prev) => !prev)}
-                className={`rounded px-4 py-2 text-sm font-semibold ${
+                className={`rounded-xl border px-4 py-2 text-sm font-bold transition ${
                   addPointMode
-                    ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                    : "border bg-white hover:bg-gray-50"
+                    ? "border-emerald-400 bg-emerald-950 text-emerald-200 ring-1 ring-emerald-400/40 hover:bg-emerald-900"
+                    : "border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700"
                 }`}
               >
                 {addPointMode ? "Add Point Mode: ON" : "Add Point Mode: OFF"}
@@ -314,7 +338,7 @@ export default function MapPageClient({
 
               <Link
                 href={`/projects/${projectId}/points`}
-                className="rounded border px-4 py-2 text-sm hover:bg-gray-50"
+                className="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-sm font-bold text-white hover:bg-slate-700"
               >
                 Points List
               </Link>
@@ -323,34 +347,55 @@ export default function MapPageClient({
         </div>
 
         <div className="grid grid-cols-1 gap-3 p-3 lg:grid-cols-[320px_1fr]">
-          <aside className="order-2 rounded-lg border bg-white p-3 lg:order-1">
-            <div className="mb-3">
-              <div className="mb-2 font-bold">Display</div>
+          <aside className="order-2 rounded-3xl border border-slate-700 bg-slate-900 p-3 shadow-2xl lg:order-1">
+            <div className="mb-3 rounded-2xl border border-slate-700 bg-slate-950 p-3">
+              <div className="mb-2 font-bold text-white">Display</div>
 
               <div className="grid grid-cols-3 gap-2 text-sm">
-                <label className="flex items-center gap-2 rounded border px-2 py-2">
+                <label
+                  className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-2 py-2 text-xs font-bold transition ${
+                    showPoints
+                      ? "border-emerald-400 bg-emerald-950 text-emerald-100"
+                      : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
                   <input
                     type="checkbox"
                     checked={showPoints}
                     onChange={(e) => setShowPoints(e.target.checked)}
+                    className="accent-emerald-500"
                   />
                   Points
                 </label>
 
-                <label className="flex items-center gap-2 rounded border px-2 py-2">
+                <label
+                  className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-2 py-2 text-xs font-bold transition ${
+                    showLines
+                      ? "border-emerald-400 bg-emerald-950 text-emerald-100"
+                      : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
                   <input
                     type="checkbox"
                     checked={showLines}
                     onChange={(e) => setShowLines(e.target.checked)}
+                    className="accent-emerald-500"
                   />
                   Lines
                 </label>
 
-                <label className="flex items-center gap-2 rounded border px-2 py-2">
+                <label
+                  className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border px-2 py-2 text-xs font-bold transition ${
+                    showPolygons
+                      ? "border-emerald-400 bg-emerald-950 text-emerald-100"
+                      : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700"
+                  }`}
+                >
                   <input
                     type="checkbox"
                     checked={showPolygons}
                     onChange={(e) => setShowPolygons(e.target.checked)}
+                    className="accent-emerald-500"
                   />
                   Polygons
                 </label>
@@ -361,7 +406,7 @@ export default function MapPageClient({
               <button
                 type="button"
                 onClick={selectAllLayers}
-                className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-bold text-white hover:bg-slate-700"
               >
                 Select All
               </button>
@@ -369,7 +414,7 @@ export default function MapPageClient({
               <button
                 type="button"
                 onClick={clearAllLayers}
-                className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-bold text-white hover:bg-slate-700"
               >
                 Clear
               </button>
@@ -377,7 +422,7 @@ export default function MapPageClient({
               <button
                 type="button"
                 onClick={resetDefaultLayers}
-                className="rounded border px-3 py-2 text-sm hover:bg-gray-50"
+                className="rounded-xl border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-bold text-white hover:bg-slate-700"
               >
                 Default
               </button>
@@ -390,7 +435,7 @@ export default function MapPageClient({
             </div>
           </aside>
 
-          <main className="order-1 overflow-hidden rounded-lg border bg-white lg:order-2">
+          <main className="order-1 overflow-hidden rounded-3xl border border-slate-700 bg-slate-900 p-3 shadow-2xl lg:order-2">
             <MapWrapper
               projectId={projectId}
               points={filteredPoints}

@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "leaflet.markercluster";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import { supabase } from "@/lib/supabase";
+
+type StatusFilter =
+  | "ALL"
+  | "PLANNED"
+  | "VISITED"
+  | "SAMPLED"
+  | "COMPLETED"
+  | "NEED_REVISIT";
 
 function getStatusColor(status: string | null) {
   switch (status) {
@@ -22,6 +30,10 @@ function getStatusColor(status: string | null) {
     default:
       return "#2563eb";
   }
+}
+
+function getStatusLabel(status: string | null) {
+  return status || "PLANNED";
 }
 
 function escapeHtml(value: any) {
@@ -64,6 +76,105 @@ function getPolygonDrawOrder(poly: any) {
   if (layerName === "ระวางแผนที่") return 6;
 
   return 10;
+}
+
+function getPointPhotoCount(p: any) {
+  let count = 0;
+
+  if (p.sample_photo_url) count += 1;
+  if (p.outcrop_photo_url) count += 1;
+
+  if (Array.isArray(p.more_photos)) {
+    count += p.more_photos.filter((photo: any) => photo?.url).length;
+  } else if (Array.isArray(p.photo_urls)) {
+    count += p.photo_urls.filter(Boolean).length;
+  }
+
+  return count;
+}
+
+function getMorePhotoPreviews(p: any) {
+  const photos: { url: string; description: string }[] = [];
+
+  if (Array.isArray(p.more_photos)) {
+    p.more_photos.forEach((photo: any) => {
+      if (photo?.url) {
+        photos.push({
+          url: String(photo.url),
+          description: String(photo.description ?? ""),
+        });
+      }
+    });
+  } else if (Array.isArray(p.photo_urls)) {
+    p.photo_urls.forEach((url: string) => {
+      if (url) {
+        photos.push({
+          url,
+          description: "",
+        });
+      }
+    });
+  }
+
+  return photos;
+}
+
+function getFollowUpReasons(p: any) {
+  const reasons: string[] = [];
+
+  if (p.status === "NEED_REVISIT") {
+    reasons.push("Need revisit");
+  }
+
+  if (getPointPhotoCount(p) === 0) {
+    reasons.push("No photo");
+  }
+
+  if (!p.rock_type) {
+    reasons.push("No rock type");
+  }
+
+  if (p.status === "SAMPLED" && !p.sample_id) {
+    reasons.push("Sample ID missing");
+  }
+
+  if (!p.remark && !p.office_comment) {
+    reasons.push("No remark/comment");
+  }
+
+  return reasons;
+}
+
+function isFollowUpPoint(p: any) {
+  return getFollowUpReasons(p).length > 0;
+}
+
+function shouldShowPoint(
+  p: any,
+  activeStatus: StatusFilter,
+  showNoPhotoOnly: boolean,
+  showNoSampleOnly: boolean,
+  showFollowUpOnly: boolean
+) {
+  const status = getStatusLabel(p.status);
+
+  if (activeStatus !== "ALL" && status !== activeStatus) {
+    return false;
+  }
+
+  if (showNoPhotoOnly && getPointPhotoCount(p) > 0) {
+    return false;
+  }
+
+  if (showNoSampleOnly && p.sample_id) {
+    return false;
+  }
+
+  if (showFollowUpOnly && !isFollowUpPoint(p)) {
+    return false;
+  }
+
+  return true;
 }
 
 function createPointIcon(p: any) {
@@ -121,6 +232,57 @@ export default function MapWrapper({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<L.Map | null>(null);
 
+  const [activeStatus, setActiveStatus] = useState<StatusFilter>("ALL");
+  const [showNoPhotoOnly, setShowNoPhotoOnly] = useState(false);
+  const [showNoSampleOnly, setShowNoSampleOnly] = useState(false);
+  const [showFollowUpOnly, setShowFollowUpOnly] = useState(false);
+
+  const validPoints = points.filter(
+    (p) =>
+      p.latitude !== null &&
+      p.longitude !== null &&
+      !Number.isNaN(Number(p.latitude)) &&
+      !Number.isNaN(Number(p.longitude))
+  );
+
+  const visiblePoints = validPoints.filter((p) =>
+    shouldShowPoint(
+      p,
+      activeStatus,
+      showNoPhotoOnly,
+      showNoSampleOnly,
+      showFollowUpOnly
+    )
+  );
+
+  const statusCounts = {
+    ALL: validPoints.length,
+    PLANNED: validPoints.filter((p) => getStatusLabel(p.status) === "PLANNED")
+      .length,
+    VISITED: validPoints.filter((p) => getStatusLabel(p.status) === "VISITED")
+      .length,
+    SAMPLED: validPoints.filter((p) => getStatusLabel(p.status) === "SAMPLED")
+      .length,
+    COMPLETED: validPoints.filter(
+      (p) => getStatusLabel(p.status) === "COMPLETED"
+    ).length,
+    NEED_REVISIT: validPoints.filter(
+      (p) => getStatusLabel(p.status) === "NEED_REVISIT"
+    ).length,
+  };
+
+  const noPhotoCount = validPoints.filter((p) => getPointPhotoCount(p) === 0)
+    .length;
+
+  const noSampleCount = validPoints.filter((p) => !p.sample_id).length;
+
+  const followUpCount = validPoints.filter((p) => isFollowUpPoint(p)).length;
+
+  const hasActiveExtraFilter =
+    showFollowUpOnly || showNoPhotoOnly || showNoSampleOnly;
+
+  const shouldShowProgressFilter = showPoints && validPoints.length > 0;
+
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -128,14 +290,6 @@ export default function MapWrapper({
       mapInstance.current.remove();
       mapInstance.current = null;
     }
-
-    const validPoints = points.filter(
-      (p) =>
-        p.latitude !== null &&
-        p.longitude !== null &&
-        !Number.isNaN(Number(p.latitude)) &&
-        !Number.isNaN(Number(p.longitude))
-    );
 
     const map = L.map(mapRef.current, {
       preferCanvas: false,
@@ -276,28 +430,66 @@ export default function MapWrapper({
         spiderfyOnMaxZoom: true,
       });
 
-      validPoints.forEach((p) => {
+      visiblePoints.forEach((p) => {
         const samplePhoto = p.sample_photo_url;
         const outcropPhoto = p.outcrop_photo_url;
+        const morePhotos = getMorePhotoPreviews(p);
+        const photoCount = getPointPhotoCount(p);
+        const followUpReasons = getFollowUpReasons(p);
+        const statusColor = getStatusColor(p.status);
         const icon = createPointIcon(p);
 
         const buildPopup = () => {
           const commentText = escapeHtml(p.office_comment ?? "");
 
           return `
-            <div style="width:280px">
-              <div style="font-size:16px;font-weight:bold;margin-bottom:6px;">
-                ${escapeHtml(p.point_code ?? "-")}
+            <div style="width:300px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+                <div style="font-size:16px;font-weight:bold;">
+                  ${escapeHtml(p.point_code ?? "-")}
+                </div>
+
+                <div style="
+                  padding:3px 8px;
+                  border-radius:999px;
+                  color:white;
+                  background:${statusColor};
+                  font-size:11px;
+                  font-weight:bold;
+                  white-space:nowrap;
+                ">
+                  ${escapeHtml(getStatusLabel(p.status))}
+                </div>
               </div>
 
-              <div><b>Status:</b> ${escapeHtml(p.status ?? "-")}</div>
+              ${
+                followUpReasons.length > 0
+                  ? `
+                    <div style="margin-bottom:8px;padding:7px 8px;border-radius:8px;background:#fee2e2;color:#991b1b;font-size:12px;line-height:1.4;">
+                      <b>Follow-up:</b> ${escapeHtml(
+                        followUpReasons.join(" / ")
+                      )}
+                    </div>
+                  `
+                  : `
+                    <div style="margin-bottom:8px;padding:7px 8px;border-radius:8px;background:#dcfce7;color:#166534;font-size:12px;line-height:1.4;">
+                      <b>Record:</b> Ready / no critical missing item
+                    </div>
+                  `
+              }
+
               <div><b>Layer:</b> ${escapeHtml(p.layer_name ?? "-")}</div>
               <div><b>Rock:</b> ${escapeHtml(p.rock_type ?? "-")}</div>
               <div><b>Weathering:</b> ${escapeHtml(p.weathering ?? "-")}</div>
               <div><b>Alteration:</b> ${escapeHtml(p.alteration ?? "-")}</div>
-              <div><b>Mineralization:</b> ${escapeHtml(p.mineralization ?? "-")}</div>
-              <div><b>Structure:</b> ${escapeHtml(p.structure_type ?? "-")}</div>
+              <div><b>Mineralization:</b> ${escapeHtml(
+                p.mineralization ?? "-"
+              )}</div>
+              <div><b>Structure:</b> ${escapeHtml(
+                p.structure_type ?? "-"
+              )}</div>
               <div><b>Sample ID:</b> ${escapeHtml(p.sample_id ?? "-")}</div>
+              <div><b>Photos:</b> ${photoCount}</div>
 
               ${
                 outcropPhoto
@@ -314,6 +506,42 @@ export default function MapWrapper({
                   <div style="margin-top:8px;font-weight:bold;">Sample Photo</div>
                   <img src="${escapeHtml(samplePhoto)}" style="width:100%;max-height:110px;object-fit:contain;border-radius:6px;border:1px solid #ddd;" />
                 `
+                  : ""
+              }
+
+              ${
+                morePhotos.length > 0
+                  ? `
+                    <div style="margin-top:8px;font-weight:bold;">More Photos</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+                      ${morePhotos
+                        .slice(0, 4)
+                        .map(
+                          (photo, index) => `
+                            <div style="border:1px solid #ddd;border-radius:6px;overflow:hidden;background:#f8fafc;">
+                              <img src="${escapeHtml(
+                                photo.url
+                              )}" style="width:100%;height:70px;object-fit:cover;" />
+                              <div style="padding:4px;font-size:10px;color:#475569;line-height:1.25;">
+                                ${
+                                  photo.description
+                                    ? escapeHtml(photo.description)
+                                    : `More Photo ${index + 1}`
+                                }
+                              </div>
+                            </div>
+                          `
+                        )
+                        .join("")}
+                    </div>
+                    ${
+                      morePhotos.length > 4
+                        ? `<div style="margin-top:4px;font-size:11px;color:#64748b;">+ ${
+                            morePhotos.length - 4
+                          } more photos</div>`
+                        : ""
+                    }
+                  `
                   : ""
               }
 
@@ -494,10 +722,7 @@ export default function MapWrapper({
           </div>
         `;
 
-        L.popup()
-          .setLatLng(e.latlng)
-          .setContent(popupContent)
-          .openOn(map);
+        L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(map);
       });
     }
 
@@ -527,6 +752,10 @@ export default function MapWrapper({
     showLines,
     showPolygons,
     addPointMode,
+    activeStatus,
+    showNoPhotoOnly,
+    showNoSampleOnly,
+    showFollowUpOnly,
   ]);
 
   return (
@@ -550,11 +779,160 @@ export default function MapWrapper({
         .add-point-mode-map .leaflet-overlay-pane svg path {
           pointer-events: none !important;
         }
+
+        .map-filter-scroll::-webkit-scrollbar,
+        .map-legend-scroll::-webkit-scrollbar {
+          height: 6px;
+        }
+
+        .map-filter-scroll::-webkit-scrollbar-track,
+        .map-legend-scroll::-webkit-scrollbar-track {
+          background: rgba(15, 23, 42, 0.9);
+          border-radius: 999px;
+        }
+
+        .map-filter-scroll::-webkit-scrollbar-thumb,
+        .map-legend-scroll::-webkit-scrollbar-thumb {
+          background: rgba(148, 163, 184, 0.75);
+          border-radius: 999px;
+        }
       `}</style>
+
+      {shouldShowProgressFilter && (
+        <div className="mb-3 overflow-hidden rounded-3xl border border-slate-700/80 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 p-4 text-white shadow-2xl">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="inline-flex rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-300">
+                Progress Filter
+              </div>
+
+              <div className="mt-2 text-sm font-semibold text-white">
+                Showing {visiblePoints.length} / {validPoints.length} valid
+                points
+              </div>
+
+              <div className="mt-1 text-xs text-slate-400">
+                Filter mapping points by field status and missing records
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveStatus("ALL");
+                setShowNoPhotoOnly(false);
+                setShowNoSampleOnly(false);
+                setShowFollowUpOnly(false);
+              }}
+              className="shrink-0 rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-bold text-white shadow hover:bg-slate-700 disabled:opacity-40"
+            >
+              Reset Filters
+            </button>
+          </div>
+
+          <div className="map-filter-scroll flex gap-2 overflow-x-auto pb-2">
+            {(
+              [
+                ["ALL", "All", statusCounts.ALL],
+                ["PLANNED", "Planned", statusCounts.PLANNED],
+                ["VISITED", "Visited", statusCounts.VISITED],
+                ["SAMPLED", "Sampled", statusCounts.SAMPLED],
+                ["COMPLETED", "Completed", statusCounts.COMPLETED],
+                ["NEED_REVISIT", "Need Revisit", statusCounts.NEED_REVISIT],
+              ] as const
+            ).map(([value, label, count]) => {
+              const active = activeStatus === value;
+
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setActiveStatus(value)}
+                  className={`shrink-0 rounded-xl border px-4 py-2 text-xs font-bold shadow-sm transition ${
+                    active
+                      ? "border-emerald-400 bg-emerald-950 text-emerald-200 ring-1 ring-emerald-400/50"
+                      : "border-slate-600 bg-slate-800 text-slate-100 hover:border-slate-400 hover:bg-slate-700"
+                  }`}
+                >
+                  {label} ({count})
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => setShowFollowUpOnly(!showFollowUpOnly)}
+              className={`shrink-0 rounded-xl border px-4 py-2 text-xs font-bold shadow-sm transition ${
+                showFollowUpOnly
+                  ? "border-red-400 bg-red-950 text-red-200 ring-1 ring-red-400/50"
+                  : "border-slate-600 bg-slate-800 text-slate-100 hover:border-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              Follow-up ({followUpCount})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowNoPhotoOnly(!showNoPhotoOnly)}
+              className={`shrink-0 rounded-xl border px-4 py-2 text-xs font-bold shadow-sm transition ${
+                showNoPhotoOnly
+                  ? "border-orange-400 bg-orange-950 text-orange-200 ring-1 ring-orange-400/50"
+                  : "border-slate-600 bg-slate-800 text-slate-100 hover:border-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              No Photo ({noPhotoCount})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowNoSampleOnly(!showNoSampleOnly)}
+              className={`shrink-0 rounded-xl border px-4 py-2 text-xs font-bold shadow-sm transition ${
+                showNoSampleOnly
+                  ? "border-blue-400 bg-blue-950 text-blue-200 ring-1 ring-blue-400/50"
+                  : "border-slate-600 bg-slate-800 text-slate-100 hover:border-slate-400 hover:bg-slate-700"
+              }`}
+            >
+              No Sample ({noSampleCount})
+            </button>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {hasActiveExtraFilter && (
+              <div className="rounded-full border border-red-400/40 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-200">
+                Extra filter active
+              </div>
+            )}
+
+            {activeStatus !== "ALL" && (
+              <div className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
+                Status: {activeStatus}
+              </div>
+            )}
+          </div>
+
+          <div className="map-legend-scroll mt-3 flex gap-4 overflow-x-auto pb-1 text-xs font-semibold text-slate-200">
+            {[
+              ["PLANNED", "Planned"],
+              ["VISITED", "Visited"],
+              ["SAMPLED", "Sampled"],
+              ["COMPLETED", "Completed"],
+              ["NEED_REVISIT", "Need Revisit"],
+            ].map(([status, label]) => (
+              <div key={status} className="flex shrink-0 items-center gap-1.5">
+                <span
+                  className="inline-block h-3.5 w-3.5 rounded-full border border-white shadow"
+                  style={{ background: getStatusColor(status) }}
+                />
+                <span>{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div
         ref={mapRef}
-        className="h-[60vh] min-h-[380px] w-full rounded border lg:h-[75vh]"
+        className="h-[60vh] min-h-[380px] w-full rounded-2xl border border-slate-300 shadow-xl lg:h-[75vh]"
       />
     </>
   );

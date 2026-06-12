@@ -7,6 +7,11 @@ import { supabase } from "@/lib/supabase";
 import { latLonToUTM, utmToLatLon } from "@/lib/utm";
 import DeletePointButton from "../DeletePointButton";
 
+type MorePhoto = {
+  url: string;
+  description: string;
+};
+
 export default function EditPointPage() {
   const params = useParams();
   const router = useRouter();
@@ -20,6 +25,7 @@ export default function EditPointPage() {
   const [saving, setSaving] = useState(false);
   const [uploadingSample, setUploadingSample] = useState(false);
   const [uploadingOutcrop, setUploadingOutcrop] = useState(false);
+  const [uploadingMorePhotos, setUploadingMorePhotos] = useState(false);
 
   const [pointCode, setPointCode] = useState("");
   const [status, setStatus] = useState("PLANNED");
@@ -50,6 +56,7 @@ export default function EditPointPage() {
   const [sampleType, setSampleType] = useState("");
   const [samplePhotoUrl, setSamplePhotoUrl] = useState("");
   const [outcropPhotoUrl, setOutcropPhotoUrl] = useState("");
+  const [morePhotos, setMorePhotos] = useState<MorePhoto[]>([]);
   const [remark, setRemark] = useState("");
   const [message, setMessage] = useState("");
 
@@ -238,6 +245,29 @@ export default function EditPointPage() {
       setSampleType(data.sample_type ?? "");
       setSamplePhotoUrl(data.sample_photo_url ?? "");
       setOutcropPhotoUrl(data.outcrop_photo_url ?? "");
+
+      if (Array.isArray(data.more_photos)) {
+        setMorePhotos(
+          data.more_photos
+            .filter((photo: any) => photo?.url)
+            .map((photo: any) => ({
+              url: String(photo.url),
+              description: String(photo.description ?? ""),
+            }))
+        );
+      } else if (Array.isArray(data.photo_urls)) {
+        setMorePhotos(
+          data.photo_urls
+            .filter(Boolean)
+            .map((url: string) => ({
+              url,
+              description: "",
+            }))
+        );
+      } else {
+        setMorePhotos([]);
+      }
+
       setRemark(data.remark ?? "");
 
       setLoading(false);
@@ -279,6 +309,67 @@ export default function EditPointPage() {
     setMessage("Photo uploaded. Please save field record.");
     setUploadingSample(false);
     setUploadingOutcrop(false);
+  }
+
+  async function uploadMorePhotos(files: FileList | null) {
+    if (!files || files.length === 0) return;
+
+    setUploadingMorePhotos(true);
+    setMessage("Uploading photos...");
+
+    const uploadedPhotos: MorePhoto[] = [];
+
+    for (const file of Array.from(files)) {
+      const fileExt = file.name.split(".").pop() || "jpg";
+      const filePath = `projects/${projectId}/points/${pointId}/more-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("mapping-photos")
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+      if (uploadError) {
+        setMessage("Upload error: " + uploadError.message);
+        continue;
+      }
+
+      const { data } = supabase.storage
+        .from("mapping-photos")
+        .getPublicUrl(filePath);
+
+      if (data.publicUrl) {
+        uploadedPhotos.push({
+          url: data.publicUrl,
+          description: "",
+        });
+      }
+    }
+
+    if (uploadedPhotos.length > 0) {
+      setMorePhotos((prev) => [...prev, ...uploadedPhotos]);
+      setMessage("Photos uploaded. Please add description and save field record.");
+    } else {
+      setMessage("No photos uploaded.");
+    }
+
+    setUploadingMorePhotos(false);
+  }
+
+  function updateMorePhotoDescription(index: number, description: string) {
+    setMorePhotos((prev) =>
+      prev.map((photo, i) =>
+        i === index ? { ...photo, description } : photo
+      )
+    );
+  }
+
+  function removeMorePhoto(index: number) {
+    setMorePhotos((prev) => prev.filter((_, i) => i !== index));
+    setMessage("Photo removed. Please save field record.");
   }
 
   async function savePoint(e: React.FormEvent) {
@@ -359,9 +450,14 @@ export default function EditPointPage() {
         : mineralization;
 
     const finalStructureType =
-      structureType === "Other"
-        ? structureTypeOther.trim()
-        : structureType;
+      structureType === "Other" ? structureTypeOther.trim() : structureType;
+
+    const cleanMorePhotos = morePhotos
+      .filter((photo) => photo.url)
+      .map((photo) => ({
+        url: photo.url,
+        description: photo.description?.trim() ?? "",
+      }));
 
     const { error } = await supabase
       .from("mapping_points")
@@ -381,6 +477,7 @@ export default function EditPointPage() {
         sample_type: sampleType || null,
         sample_photo_url: samplePhotoUrl || null,
         outcrop_photo_url: outcropPhotoUrl || null,
+        more_photos: cleanMorePhotos,
         remark: remark || null,
         updated_at: new Date().toISOString(),
       })
@@ -494,7 +591,8 @@ export default function EditPointPage() {
             </div>
 
             <div className="mt-3 text-sm text-slate-500">
-              ถ้าแก้ค่า UTM ระบบจะใช้ UTM แปลงกลับเป็น Latitude / Longitude ตอนกด Save
+              ถ้าแก้ค่า UTM ระบบจะใช้ UTM แปลงกลับเป็น Latitude / Longitude
+              ตอนกด Save
             </div>
           </section>
 
@@ -562,9 +660,13 @@ export default function EditPointPage() {
                 <option value="">Weathering</option>
                 <option value="Fresh">Fresh</option>
                 <option value="Slightly Weathered">Slightly Weathered</option>
-                <option value="Moderately Weathered">Moderately Weathered</option>
+                <option value="Moderately Weathered">
+                  Moderately Weathered
+                </option>
                 <option value="Highly Weathered">Highly Weathered</option>
-                <option value="Completely Weathered">Completely Weathered</option>
+                <option value="Completely Weathered">
+                  Completely Weathered
+                </option>
               </select>
 
               <select
@@ -686,12 +788,31 @@ export default function EditPointPage() {
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-3 font-bold">Sample Photo</div>
 
-                {samplePhotoUrl && (
-                  <img
-                    src={samplePhotoUrl}
-                    alt="Sample"
-                    className="mb-3 max-h-64 w-full rounded-xl border bg-white object-contain"
-                  />
+                {samplePhotoUrl ? (
+                  <>
+                    <img
+                      src={samplePhotoUrl}
+                      alt="Sample"
+                      className="mb-3 max-h-64 w-full rounded-xl border bg-white object-contain"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSamplePhotoUrl("");
+                        setMessage(
+                          "Sample photo removed. Please save field record."
+                        );
+                      }}
+                      className="mb-3 w-full rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                    >
+                      Remove Sample Photo
+                    </button>
+                  </>
+                ) : (
+                  <div className="mb-3 flex h-40 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-400">
+                    No Sample Photo
+                  </div>
                 )}
 
                 <input
@@ -713,12 +834,31 @@ export default function EditPointPage() {
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-3 font-bold">Outcrop Photo</div>
 
-                {outcropPhotoUrl && (
-                  <img
-                    src={outcropPhotoUrl}
-                    alt="Outcrop"
-                    className="mb-3 max-h-64 w-full rounded-xl border bg-white object-contain"
-                  />
+                {outcropPhotoUrl ? (
+                  <>
+                    <img
+                      src={outcropPhotoUrl}
+                      alt="Outcrop"
+                      className="mb-3 max-h-64 w-full rounded-xl border bg-white object-contain"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOutcropPhotoUrl("");
+                        setMessage(
+                          "Outcrop photo removed. Please save field record."
+                        );
+                      }}
+                      className="mb-3 w-full rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+                    >
+                      Remove Outcrop Photo
+                    </button>
+                  </>
+                ) : (
+                  <div className="mb-3 flex h-40 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm text-slate-400">
+                    No Outcrop Photo
+                  </div>
                 )}
 
                 <input
@@ -737,6 +877,64 @@ export default function EditPointPage() {
                 )}
               </div>
             </div>
+
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 font-bold">More Photos</div>
+
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => uploadMorePhotos(e.target.files)}
+              />
+
+              {uploadingMorePhotos && (
+                <div className="mt-2 text-sm text-slate-500">
+                  Uploading more photos...
+                </div>
+              )}
+
+              {morePhotos.length > 0 && (
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {morePhotos.map((photo, index) => (
+                    <div
+                      key={`${photo.url}-${index}`}
+                      className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+                    >
+                      <img
+                        src={photo.url}
+                        alt={`More photo ${index + 1}`}
+                        className="h-48 w-full object-cover"
+                      />
+
+                      <div className="border-t p-3">
+                        <label className="mb-2 block text-sm font-semibold text-slate-600">
+                          Description
+                        </label>
+
+                        <textarea
+                          value={photo.description}
+                          onChange={(e) =>
+                            updateMorePhotoDescription(index, e.target.value)
+                          }
+                          placeholder="เช่น Close-up quartz vein with pyrite / Outcrop overview looking north"
+                          rows={3}
+                          className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-950 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => removeMorePhoto(index)}
+                          className="mt-3 w-full rounded-xl bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
 
           <section className={cardClass}>
@@ -753,7 +951,12 @@ export default function EditPointPage() {
 
           <button
             type="submit"
-            disabled={saving || uploadingSample || uploadingOutcrop}
+            disabled={
+              saving ||
+              uploadingSample ||
+              uploadingOutcrop ||
+              uploadingMorePhotos
+            }
             className="rounded-2xl bg-slate-950 px-5 py-4 font-bold text-white shadow-lg hover:bg-slate-800 disabled:opacity-50"
           >
             {saving ? "Saving..." : "Save Field Record"}
